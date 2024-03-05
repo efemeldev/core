@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -9,7 +8,6 @@ import (
 	"strings"
 
 	lua "github.com/yuin/gopher-lua"
-	"gopkg.in/yaml.v2"
 )
 
 // Function to recursively convert Lua table to Go map
@@ -47,29 +45,6 @@ func luaTableToMap(table *lua.LTable) interface{} {
 	}
 }
 
-// Function to generate YAML or JSON data from a Lua table based on the output format
-func generateData(data *lua.LTable, format string) ([]byte, error) {
-	// Convert Lua table to Go map
-	goMap := luaTableToMap(data)
-
-	// Convert Go map to YAML or JSON based on the format
-	if format == "yaml" {
-		yamlData, err := yaml.Marshal(goMap)
-		if err != nil {
-			return nil, err
-		}
-		return yamlData, nil
-	} else if format == "json" {
-		jsonData, err := json.Marshal(goMap)
-		if err != nil {
-			return nil, err
-		}
-		return jsonData, nil
-	} else {
-		return nil, fmt.Errorf("unsupported output format: %s", format)
-	}
-}
-
 // Load custom Lua modules from embedded resources
 func loadLuaModules(L *lua.LState) error {
 	// Loop through the embedded Lua files
@@ -94,56 +69,60 @@ func add(a, b int) int {
     return a + b
 }
 
+func generateOutputFilename(inputFilename, outputFormat string) string {
+	// Extract the input Lua file name without extension
+	fileName := strings.TrimSuffix(inputFilename, filepath.Ext(inputFilename))
 
-func main() {
-	// Define command-line flags
-	outputFormat := flag.String("output", "yaml", "Output format: yaml or json")
-	flag.Parse()
+	// Define the output YAML file name
+	return fileName + "." + outputFormat
+}
 
-	// Check if a command-line argument is provided
-	if flag.NArg() < 1 {
-		fmt.Println("Usage: go run . -output <yaml|json> <lua_script>")
-		return
+type runInput struct {
+	outputFormat string
+	inputFileName string
+	outputFilename string
+	outputUserSuffix string
+}
+
+func run(input runInput) error {
+	formatter, err := getFormatter(input.outputFormat, input.outputUserSuffix)
+	
+	// Failed to get formatter
+	if err != nil {
+		return err
 	}
 
-	// Get the path to the Lua script file from the command-line argument
-	luaScriptFile := flag.Args()[0]
-
 	// Create a new Lua state
-	L := lua.NewState()
-	defer L.Close()
+	luaState := lua.NewState()
+	defer luaState.Close()
 
     // Register the Go function as a global function in Lua
-    L.SetGlobal("add", L.NewFunction(func(L *lua.LState) int {
-        a := L.ToInt(1)
-        b := L.ToInt(2)
+    luaState.SetGlobal("add", luaState.NewFunction(func(L *lua.LState) int {
+        a := luaState.ToInt(1)
+        b := luaState.ToInt(2)
         result := add(a, b)
-        L.Push(lua.LNumber(result))
+        luaState.Push(lua.LNumber(result))
         return 1 // Number of return values
     }))
 
 	// Register the Go function as a global function in Lua
-	L.SetGlobal("main", L.NewFunction(func(L *lua.LState) int {
+	luaState.SetGlobal("main", luaState.NewFunction(func(L *lua.LState) int {
 		// Get the arguments from Lua
-		dataTable := L.CheckTable(1)
+		dataTable := luaState.CheckTable(1)
+		
+		goMap := luaTableToMap(dataTable)
+		data, err := formatter.Marshal(goMap)
 
-		// Generate YAML file
-		yamlData, err := generateData(dataTable, *outputFormat)
 		if err != nil {
-			L.Push(lua.LString(fmt.Sprintf("Error: %s", err)))
+			luaState.Push(lua.LString(fmt.Sprintf("Error: %s", err)))
 			return 1
 		}
 
-		// Extract the input Lua file name without extension
-		fileName := strings.TrimSuffix(luaScriptFile, filepath.Ext(luaScriptFile))
-
-		// Define the output YAML file name
-		outputFileName := fileName + "." + *outputFormat
 
 		// Write YAML data to file
-		err = ioutil.WriteFile(outputFileName, []byte(yamlData), 0644)
+		err = ioutil.WriteFile(input.outputFilename, []byte(data), 0644)
 		if err != nil {
-			L.Push(lua.LString(fmt.Sprintf("Error writing to file: %s", err)))
+			luaState.Push(lua.LString(fmt.Sprintf("Error writing to file: %s", err)))
 			return 1
 		}
 
@@ -151,20 +130,61 @@ func main() {
 	}))
 
 	// Load custom Lua modules from the "lua" folder
-	err := loadLuaModules(L)
+	err = loadLuaModules(luaState)
 	if err != nil {
 		fmt.Println("Error:", err)
-		return
+		return nil
 	}
 
 	// Run user-provided Lua script along with the custom module
-	userScript, err := ioutil.ReadFile(luaScriptFile)
+	userScript, err := ioutil.ReadFile(input.inputFileName)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return nil
+	}
+
+	if err := luaState.DoString(string(userScript)); err != nil {
+		fmt.Println("Error:", err)
+		return nil
+	}
+
+	return nil
+}
+
+func main() {
+
+	// Define command-line flags
+	outputFormat := flag.String("output", "", "Output format")
+	outputUserSuffix := flag.String("suffix", "", "User suffix for output file name")
+	flag.Parse()
+
+	// Check if output file is provided
+	if flag.NArg() < 1 {
+		fmt.Println("Usage: go run . -output <yaml|json> <efemel script>")
+		return
+	}
+
+	// Get the path to the Lua script file from the command-line argument
+	luaScriptFile := flag.Args()[0]
+
+
+	formatter, err := getFormatter(*outputFormat, *outputUserSuffix)
+
 	if err != nil {
 		fmt.Println("Error:", err)
 		return
 	}
 
-	if err := L.DoString(string(userScript)); err != nil {
+	outputFilename := generateOutputFilename(luaScriptFile, formatter.suffix)
+
+	// Run the Lua script
+	err = run(runInput{
+		outputFormat: *outputFormat,
+		inputFileName: luaScriptFile,
+		outputFilename: outputFilename,
+	})
+
+	if err != nil {
 		fmt.Println("Error:", err)
 		return
 	}

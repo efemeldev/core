@@ -2,6 +2,8 @@
 
 Functional markup language for writing configuration files.
 
+File extensions: `efemel` and `fmel`
+
 ## Running
 
 Generate a YAML file named `script.yaml` from the `samples/script.lua` file.
@@ -36,10 +38,11 @@ go build -ldflags="-s -w" -o efemel
 
 ## Todo
 
+- [ ] Get rid of the need to wrap the configuration in a function; only do a return {}
 - [ ] Refactor `main.go` into multiple files
 - [ ] Standardise output module injection
+- [ ] Ability to inject external configuration setups using zipped files
 - [ ] Organise project structure
-
 - [ ] Add variable input (like tfvars) and implement variable usage in code
 - [ ] Add glob variable input and output generation per var file
 - [ ] Add support for multiple file input using glob
