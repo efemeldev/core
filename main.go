@@ -185,7 +185,17 @@ func main() {
 
 	luaModuleNames, err := findAllLuaAssetModules("lua/")
 
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
 	luaModules, err := loadLuaAssetModules(luaModuleNames)
+
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
 
 	// Run user-provided Lua script along with the custom module
 	userScript, err := ioutil.ReadFile(luaScriptFile)

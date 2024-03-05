@@ -19,3 +19,7 @@
 
 # Go workspace file
 go.work
+
+# Ignore all sample files that aren't lua
+samples/*
+!samples/**/*.lua
