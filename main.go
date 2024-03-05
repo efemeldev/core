@@ -45,28 +45,33 @@ func luaTableToMap(table *lua.LTable) interface{} {
 	}
 }
 
-// Load custom Lua modules from embedded resources
-func loadLuaModules(L *lua.LState) error {
-	// Loop through the embedded Lua files
+func findAllLuaAssetModules(prefix string) ([]string, error) {
+	var result []string
 	for _, name := range AssetNames() {
-		if strings.HasPrefix(name, "lua/") && strings.HasSuffix(name, ".lua") {
-			content, err := Asset(name)
-			if err != nil {
-				fmt.Println("Error reading asset:", err)
-				continue
-			}
-			if err := L.DoString(string(content)); err != nil {
-				fmt.Println("Error loading Lua module:", err)
-				continue
-			}
+		if strings.HasPrefix(name, prefix) && strings.HasSuffix(name, ".lua") {
+			result = append(result, name)
 		}
 	}
-	return nil
+	return result, nil
+}
+
+// Load custom Lua modules from embedded resources
+func loadLuaAssetModules(modules []string) ([][]byte, error) {
+	var result [][]byte
+	// Loop through the embedded Lua files
+	for _, module := range modules {
+		content, err := Asset(module)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, content)
+	}
+	return result, nil
 }
 
 // Define a Go function that you want to expose to Lua
 func add(a, b int) int {
-    return a + b
+	return a + b
 }
 
 func generateOutputFilename(inputFilename, outputFormat string) string {
@@ -78,77 +83,73 @@ func generateOutputFilename(inputFilename, outputFormat string) string {
 }
 
 type runInput struct {
-	outputFormat string
-	inputFileName string
-	outputFilename string
-	outputUserSuffix string
+	format     func(v interface{}) ([]byte, error)
+	script     []byte
+	luaModules [][]byte
 }
 
-func run(input runInput) error {
-	formatter, err := getFormatter(input.outputFormat, input.outputUserSuffix)
-	
-	// Failed to get formatter
-	if err != nil {
-		return err
-	}
-
+func run(input runInput) ([]byte, error) {
 	// Create a new Lua state
 	luaState := lua.NewState()
 	defer luaState.Close()
 
-    // Register the Go function as a global function in Lua
-    luaState.SetGlobal("add", luaState.NewFunction(func(L *lua.LState) int {
-        a := luaState.ToInt(1)
-        b := luaState.ToInt(2)
-        result := add(a, b)
-        luaState.Push(lua.LNumber(result))
-        return 1 // Number of return values
-    }))
+	// Register the Go function as a global function in Lua
+	luaState.SetGlobal("add", luaState.NewFunction(func(L *lua.LState) int {
+		a := luaState.ToInt(1)
+		b := luaState.ToInt(2)
+		result := add(a, b)
+		luaState.Push(lua.LNumber(result))
+		return 1 // Number of return values
+	}))
+
+	// create a channel that will be used to write the result of the Lua script
+	resultChannel := make(chan []byte, 1)
+	errorChannel := make(chan error, 1)
 
 	// Register the Go function as a global function in Lua
 	luaState.SetGlobal("main", luaState.NewFunction(func(L *lua.LState) int {
 		// Get the arguments from Lua
 		dataTable := luaState.CheckTable(1)
-		
+
 		goMap := luaTableToMap(dataTable)
-		data, err := formatter.Marshal(goMap)
+
+		// if I were to create custom output formats using lua
+		// I would have to take this function and pass it to the lua script
+		// I then would have to create custom modules in lua to handle the output
+		// and this function would only be responsible for capturing the output into a channel
+		data, err := input.format(goMap)
 
 		if err != nil {
-			luaState.Push(lua.LString(fmt.Sprintf("Error: %s", err)))
-			return 1
+			errorChannel <- err
+			return 0
 		}
 
-
-		// Write YAML data to file
-		err = ioutil.WriteFile(input.outputFilename, []byte(data), 0644)
-		if err != nil {
-			luaState.Push(lua.LString(fmt.Sprintf("Error writing to file: %s", err)))
-			return 1
-		}
+		// Write data to channel
+		resultChannel <- data
 
 		return 0
 	}))
 
-	// Load custom Lua modules from the "lua" folder
-	err = loadLuaModules(luaState)
-	if err != nil {
-		fmt.Println("Error:", err)
-		return nil
+	// Load custom Lua modules
+	for _, module := range input.luaModules {
+		if err := luaState.DoString(string(module)); err != nil {
+			return nil, err
+		}
 	}
 
-	// Run user-provided Lua script along with the custom module
-	userScript, err := ioutil.ReadFile(input.inputFileName)
-	if err != nil {
-		fmt.Println("Error:", err)
-		return nil
+	// Run the user-provided Lua script
+	if err := luaState.DoString(string(input.script)); err != nil {
+		return nil, err
 	}
 
-	if err := luaState.DoString(string(userScript)); err != nil {
-		fmt.Println("Error:", err)
-		return nil
-	}
+	// Wait for the result of the Lua script
+	select {
+	case data := <-resultChannel:
+		return data, nil
 
-	return nil
+	case err := <-errorChannel:
+		return nil, err
+	}
 }
 
 func main() {
@@ -167,7 +168,6 @@ func main() {
 	// Get the path to the Lua script file from the command-line argument
 	luaScriptFile := flag.Args()[0]
 
-
 	formatter, err := getFormatter(*outputFormat, *outputUserSuffix)
 
 	if err != nil {
@@ -177,15 +177,40 @@ func main() {
 
 	outputFilename := generateOutputFilename(luaScriptFile, formatter.suffix)
 
+	// Failed to get formatter
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
+	luaModuleNames, err := findAllLuaAssetModules("lua/")
+
+	luaModules, err := loadLuaAssetModules(luaModuleNames)
+
+	// Run user-provided Lua script along with the custom module
+	userScript, err := ioutil.ReadFile(luaScriptFile)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
 	// Run the Lua script
-	err = run(runInput{
-		outputFormat: *outputFormat,
-		inputFileName: luaScriptFile,
-		outputFilename: outputFilename,
+	data, err := run(runInput{
+		format:     formatter.Marshal,
+		script:     userScript,
+		luaModules: luaModules,
 	})
 
 	if err != nil {
 		fmt.Println("Error:", err)
 		return
 	}
+
+	// Write the result to the output file
+	err = ioutil.WriteFile(outputFilename, data, 0644)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
 }

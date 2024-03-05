@@ -39,7 +39,8 @@ go build -ldflags="-s -w" -o efemel
 ## Todo
 
 - [ ] Get rid of the need to wrap the configuration in a function; only do a return {}
-- [ ] Refactor `main.go` into multiple files
+- [x] Refactor `main.go`
+- [ ] Use a builder pattern to add formatters, custom modules, lua functions, etc
 - [ ] Standardise output module injection
 - [ ] Ability to inject external configuration setups using zipped files
 - [ ] Organise project structure
