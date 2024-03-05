@@ -1,4 +1,4 @@
-local data = require "./samples/components/data"
+local data = require "./components/data"
 
 main({
     result = {

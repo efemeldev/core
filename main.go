@@ -74,6 +74,11 @@ func add(a, b int) int {
 	return a + b
 }
 
+// Given a filename, return the path to the file
+func getPathToFile(filename string) string {
+	return filepath.Dir(filename)
+}
+
 func generateOutputFilename(inputFilename, outputFormat string) string {
 	// Extract the input Lua file name without extension
 	fileName := strings.TrimSuffix(inputFilename, filepath.Ext(inputFilename))
@@ -86,6 +91,7 @@ type runInput struct {
 	format     func(v interface{}) ([]byte, error)
 	script     []byte
 	luaModules [][]byte
+	cwd        string
 }
 
 func run(input runInput) ([]byte, error) {
@@ -129,6 +135,9 @@ func run(input runInput) ([]byte, error) {
 
 		return 0
 	}))
+
+	// Set the current working directory
+	luaState.DoString("package.path = package.path .. ';" + input.cwd + "/?.lua'")
 
 	// Load custom Lua modules
 	for _, module := range input.luaModules {
@@ -209,6 +218,7 @@ func main() {
 		format:     formatter.Marshal,
 		script:     userScript,
 		luaModules: luaModules,
+		cwd:        getPathToFile(luaScriptFile),
 	})
 
 	if err != nil {
