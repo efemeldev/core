@@ -90,19 +90,14 @@ func generateOutputFilename(inputFilename, outputFormat string) string {
 	return fileName + "." + outputFormat
 }
 
-type runInput struct {
-	format     func(v interface{}) ([]byte, error)
-	script     []byte
+type initLuaStateInput struct {
 	luaModules [][]byte
-	cwd        string
 }
 
-func run(input runInput) ([]byte, error) {
+func initLuaState(input initLuaStateInput) (*lua.LState, error) {
 	// Create a new Lua state
 	luaState := lua.NewState()
-	defer luaState.Close()
 
-	// Register the Go function as a global function in Lua
 	luaState.SetGlobal("add", luaState.NewFunction(func(L *lua.LState) int {
 		a := luaState.ToInt(1)
 		b := luaState.ToInt(2)
@@ -118,6 +113,17 @@ func run(input runInput) ([]byte, error) {
 		}
 	}
 
+	return luaState, nil
+}
+
+type runInput struct {
+	format   func(v interface{}) ([]byte, error)
+	script   []byte
+	luaState *lua.LState
+	cwd      string
+}
+
+func run(input runInput) ([]byte, error) {
 	// Set the current working directory
 	// There are a bunch of checks here to make sure the path is valid
 	// It's not really required in production because we know the script exists
@@ -127,19 +133,19 @@ func run(input runInput) ([]byte, error) {
 		if _, err := os.Stat(input.cwd); os.IsNotExist(err) {
 			return nil, fmt.Errorf("cwd path does not exist: %s", input.cwd)
 		}
-		luaState.DoString("package.path = package.path .. ';" + input.cwd + "/?.lua'")
+		input.luaState.DoString("package.path = package.path .. ';" + input.cwd + "/?.lua'")
 	}
 
 	// Run the user-provided Lua script
-	if err := luaState.DoString(string(input.script)); err != nil {
+	if err := input.luaState.DoString(string(input.script)); err != nil {
 		return nil, err
 	}
 
-	returnedValue := luaState.Get(-1)
+	returnedValue := input.luaState.Get(-1)
 
 	// Get the arguments from Lua
 
-	dataTable, ok := returnedValue.(*lua.LTable);
+	dataTable, ok := returnedValue.(*lua.LTable)
 
 	if !ok {
 		return nil, fmt.Errorf("expected a table, got %T", returnedValue)
@@ -204,12 +210,16 @@ func main() {
 	// Run user-provided Lua script along with the custom module
 	userScript, _ := handleError(os.ReadFile(luaScriptFile))
 
+	luaState, _ := handleError(initLuaState(initLuaStateInput{
+		luaModules: luaModules,
+	}))
+
 	// Run the Lua script
 	data, _ := handleError(run(runInput{
-		format:     formatter.Marshal,
-		script:     userScript,
-		luaModules: luaModules,
-		cwd:        getPathToFile(luaScriptFile),
+		format:   formatter.Marshal,
+		script:   userScript,
+		luaState: luaState,
+		cwd:      getPathToFile(luaScriptFile),
 	}))
 
 	// Write the result to the output file
