@@ -1,8 +1,9 @@
 local data = require "./components/data"
 
-main({
+return {
     result = {
-        add = custom.add(1,2)
+        add = custom.add(1,4)
     },
-    data = data
-})
+    data = data,
+    ext = ext
+}

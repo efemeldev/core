@@ -108,37 +108,6 @@ func run(input runInput) ([]byte, error) {
 		return 1 // Number of return values
 	}))
 
-	// create a channel that will be used to write the result of the Lua script
-	resultChannel := make(chan []byte, 1)
-	errorChannel := make(chan error, 1)
-
-	// Register the Go function as a global function in Lua
-	luaState.SetGlobal("main", luaState.NewFunction(func(L *lua.LState) int {
-		// Get the arguments from Lua
-		dataTable := luaState.CheckTable(1)
-
-		goMap := luaTableToMap(dataTable)
-
-		// if I were to create custom output formats using lua
-		// I would have to take this function and pass it to the lua script
-		// I then would have to create custom modules in lua to handle the output
-		// and this function would only be responsible for capturing the output into a channel
-		data, err := input.format(goMap)
-
-		if err != nil {
-			errorChannel <- err
-			return 0
-		}
-
-		// Write data to channel
-		resultChannel <- data
-
-		return 0
-	}))
-
-	// Set the current working directory
-	luaState.DoString("package.path = package.path .. ';" + input.cwd + "/?.lua'")
-
 	// Load custom Lua modules
 	for _, module := range input.luaModules {
 		if err := luaState.DoString(string(module)); err != nil {
@@ -146,19 +115,33 @@ func run(input runInput) ([]byte, error) {
 		}
 	}
 
+	// Set the current working directory
+	luaState.DoString("package.path = package.path .. ';" + input.cwd + "/?.lua'")
+
 	// Run the user-provided Lua script
 	if err := luaState.DoString(string(input.script)); err != nil {
 		return nil, err
 	}
 
-	// Wait for the result of the Lua script
-	select {
-	case data := <-resultChannel:
-		return data, nil
+	returnedValue := luaState.Get(-1)
 
-	case err := <-errorChannel:
+	// Get the arguments from Lua
+
+	dataTable, ok := returnedValue.(*lua.LTable);
+
+	if !ok {
+		return nil, fmt.Errorf("expected a table, got %T", returnedValue)
+	}
+
+	goMap := luaTableToMap(dataTable)
+
+	data, err := input.format(goMap)
+
+	if err != nil {
 		return nil, err
 	}
+
+	return data, nil
 }
 
 func main() {
