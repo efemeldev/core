@@ -41,6 +41,7 @@ go build -ldflags="-s -w" -o efemel
 - [x] Get rid of the need to wrap the configuration in a function; only do a return {}
 - [x] Refactor `main.go`
 - [x] Set CWD per input script so that lua modules can be referenced from the same folder
+- [x] Error handler
 - [ ] Use a builder pattern to add formatters, custom modules, lua functions, etc
 - [ ] Standardise output module injection
 - [ ] Ability to inject external configuration setups using zipped files

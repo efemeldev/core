@@ -3,9 +3,10 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	lua "github.com/yuin/gopher-lua"
 )
@@ -35,14 +36,16 @@ func luaTableToMap(table *lua.LTable) interface{} {
 			arr[idx-1] = luaValueToInterface(value)
 		})
 		return arr
-	} else {
-		// If not, treat it as a map
-		result := make(map[string]interface{})
-		table.ForEach(func(key, value lua.LValue) {
-			result[key.String()] = luaValueToInterface(value)
-		})
-		return result
 	}
+
+	// If not, treat it as a map
+	result := make(map[string]interface{})
+
+	table.ForEach(func(key, value lua.LValue) {
+		result[key.String()] = luaValueToInterface(value)
+	})
+
+	return result
 }
 
 func findAllLuaAssetModules(prefix string) ([]string, error) {
@@ -144,6 +147,16 @@ func run(input runInput) ([]byte, error) {
 	return data, nil
 }
 
+func handleError[T interface{}](data T, err error) (T, error) {
+	if err == nil {
+		return data, nil
+	}
+
+	fmt.Println("Error:", err)
+	syscall.Exit(1)
+	return data, err
+}
+
 func main() {
 
 	// Define command-line flags
@@ -160,57 +173,27 @@ func main() {
 	// Get the path to the Lua script file from the command-line argument
 	luaScriptFile := flag.Args()[0]
 
-	formatter, err := getFormatter(*outputFormat, *outputUserSuffix)
-
-	if err != nil {
-		fmt.Println("Error:", err)
-		return
-	}
+	formatter, _ := handleError(getFormatter(*outputFormat, *outputUserSuffix))
 
 	outputFilename := generateOutputFilename(luaScriptFile, formatter.suffix)
 
-	// Failed to get formatter
-	if err != nil {
-		fmt.Println("Error:", err)
-		return
-	}
+	luaModuleNames, _ := handleError(findAllLuaAssetModules("lua/"))
 
-	luaModuleNames, err := findAllLuaAssetModules("lua/")
-
-	if err != nil {
-		fmt.Println("Error:", err)
-		return
-	}
-
-	luaModules, err := loadLuaAssetModules(luaModuleNames)
-
-	if err != nil {
-		fmt.Println("Error:", err)
-		return
-	}
+	luaModules, _ := handleError(loadLuaAssetModules(luaModuleNames))
 
 	// Run user-provided Lua script along with the custom module
-	userScript, err := ioutil.ReadFile(luaScriptFile)
-	if err != nil {
-		fmt.Println("Error:", err)
-		return
-	}
+	userScript, _ := handleError(os.ReadFile(luaScriptFile))
 
 	// Run the Lua script
-	data, err := run(runInput{
+	data, _ := handleError(run(runInput{
 		format:     formatter.Marshal,
 		script:     userScript,
 		luaModules: luaModules,
 		cwd:        getPathToFile(luaScriptFile),
-	})
-
-	if err != nil {
-		fmt.Println("Error:", err)
-		return
-	}
+	}))
 
 	// Write the result to the output file
-	err = ioutil.WriteFile(outputFilename, data, 0644)
+	err := os.WriteFile(outputFilename, data, 0644)
 	if err != nil {
 		fmt.Println("Error:", err)
 		return
