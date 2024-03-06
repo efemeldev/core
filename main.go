@@ -92,12 +92,37 @@ func generateOutputFilename(inputFilename, outputFormat string) string {
 }
 
 type initLuaStateInput struct {
-	luaModules [][]byte
+	luaModules []string
+	varsFile  string
 }
 
 func initLuaState(input initLuaStateInput) (*lua.LState, error) {
 	// Create a new Lua state
 	luaState := lua.NewState()
+
+	// load all vars from file
+	if input.varsFile != "" {
+
+		// Read the Lua script
+		varsScript, err := os.ReadFile(input.varsFile)
+		if err != nil {
+			return nil, err
+		}
+
+		// Run the Lua script
+		dataTable, err := getLuaTable(getLuaTableInput{
+			luaState: luaState,
+			script:   string(varsScript),
+			cwd:      getPathToFile(input.varsFile),
+		})
+
+		if err != nil {
+			return nil, err
+		}
+
+		luaState.SetGlobal("vars", dataTable)
+	}
+
 
 	luaState.SetGlobal("testAdd", luaState.NewFunction(func(L *lua.LState) int {
 		a := L.ToInt(1)
@@ -109,8 +134,14 @@ func initLuaState(input initLuaStateInput) (*lua.LState, error) {
 		return 1
 	}))
 
+	loadedLuaModules, err := loadLuaAssetModules(input.luaModules)
+
+	if err != nil {
+		return nil, err
+	}
+
 	// Load custom Lua modules
-	for _, module := range input.luaModules {
+	for _, module := range loadedLuaModules {
 		if err := luaState.DoString(string(module)); err != nil {
 			return nil, err
 		}
@@ -119,14 +150,14 @@ func initLuaState(input initLuaStateInput) (*lua.LState, error) {
 	return luaState, nil
 }
 
-type runInput struct {
-	format   func(v interface{}) ([]byte, error)
-	script   []byte
+
+type getLuaTableInput struct {
 	luaState *lua.LState
-	cwd      string
+	script string
+	cwd string
 }
 
-func run(input runInput) ([]byte, error) {
+func getLuaTable(input getLuaTableInput) (*lua.LTable, error) {
 	// Set the current working directory
 	// There are a bunch of checks here to make sure the path is valid
 	// It's not really required in production because we know the script exists
@@ -152,6 +183,28 @@ func run(input runInput) ([]byte, error) {
 
 	if !ok {
 		return nil, fmt.Errorf("expected a table, got %T", returnedValue)
+	}
+
+	return dataTable, nil
+}
+
+type runInput struct {
+	format   func(v interface{}) ([]byte, error)
+	script   []byte
+	luaState *lua.LState
+	cwd      string
+}
+
+
+func run(input runInput) ([]byte, error) {
+	dataTable, err := getLuaTable(getLuaTableInput{
+		luaState: input.luaState,
+		script:   string(input.script),
+		cwd:      input.cwd,
+	})
+
+	if err != nil {
+		return nil, err
 	}
 
 	goMap := luaTableToMap(dataTable)
@@ -186,6 +239,7 @@ func main() {
 	// Define command-line flags
 	outputFormat := flag.String("output", "", "Output format")
 	outputUserSuffix := flag.String("suffix", "", "User suffix for output file name")
+	varsFile := flag.String("varsFile", "", "File with vars to be used in the script")
 	flag.Parse()
 
 	// Check if output file is provided
@@ -210,12 +264,11 @@ func main() {
 
 	formatter, _ := handleError(getFormatter(*outputFormat, *outputUserSuffix))
 
-	luaModuleNames, _ := handleError(findAllLuaAssetModules("lua/"))
-
-	luaModules, _ := handleError(loadLuaAssetModules(luaModuleNames))
+	luaModules, _ := handleError(findAllLuaAssetModules("lua/"))
 
 	luaState, _ := handleError(initLuaState(initLuaStateInput{
 		luaModules: luaModules,
+		varsFile: *varsFile,
 	}))
 
 	defer luaState.Close()

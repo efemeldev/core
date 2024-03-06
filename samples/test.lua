@@ -5,5 +5,6 @@ return {
         add = custom.add(2,55),
         test = testAdd(1,2),
     },
-    data = data
+    data = data,
+    environment = vars.environment
 }
