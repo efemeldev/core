@@ -98,12 +98,14 @@ func initLuaState(input initLuaStateInput) (*lua.LState, error) {
 	// Create a new Lua state
 	luaState := lua.NewState()
 
-	luaState.SetGlobal("add", luaState.NewFunction(func(L *lua.LState) int {
-		a := luaState.ToInt(1)
-		b := luaState.ToInt(2)
+	luaState.SetGlobal("testAdd", luaState.NewFunction(func(L *lua.LState) int {
+		a := L.ToInt(1)
+		b := L.ToInt(2)
+
 		result := add(a, b)
-		luaState.Push(lua.LNumber(result))
-		return 1 // Number of return values
+
+		L.Push(lua.LNumber(result))
+		return 1
 	}))
 
 	// Load custom Lua modules
@@ -214,11 +216,15 @@ func main() {
 		luaModules: luaModules,
 	}))
 
+	defer luaState.Close()
+
+	luaThread, _ := luaState.NewThread()
+
 	// Run the Lua script
 	data, _ := handleError(run(runInput{
 		format:   formatter.Marshal,
 		script:   userScript,
-		luaState: luaState,
+		luaState: luaThread,
 		cwd:      getPathToFile(luaScriptFile),
 	}))
 
