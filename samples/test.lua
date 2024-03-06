@@ -4,6 +4,5 @@ return {
     result = {
         add = custom.add(1,4)
     },
-    data = data,
-    ext = ext
+    data = data
 }
