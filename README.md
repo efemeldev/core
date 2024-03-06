@@ -43,10 +43,9 @@ go build -ldflags="-s -w" -o efemel
 - [x] Set CWD per input script so that lua modules can be referenced from the same folder
 - [x] Error handler
 - [ ] Use a builder pattern to add formatters, custom modules, lua functions, etc
-- [ ] Standardise output module injection
-- [ ] Ability to inject external configuration setups using zipped files
-- [ ] Organise project structure
 - [ ] Add variable input (like tfvars) and implement variable usage in code
+- [ ] Standardise output module injection
+- [ ] Organise project structure
 - [ ] Add glob variable input and output generation per var file
 - [ ] Add support for multiple file input using glob
 - [ ] Convert main function into one that runs an array of functions that generate the final output. Note that these functions should have access to all previous outputs
@@ -56,6 +55,7 @@ go build -ldflags="-s -w" -o efemel
 - [ ] Add CI/CD
 - [ ] Add documentation
 - [ ] Add examples
+- [ ] Multi core configuration generation
 
 ## Multiple input files
 
