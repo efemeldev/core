@@ -119,7 +119,16 @@ func run(input runInput) ([]byte, error) {
 	}
 
 	// Set the current working directory
-	luaState.DoString("package.path = package.path .. ';" + input.cwd + "/?.lua'")
+	// There are a bunch of checks here to make sure the path is valid
+	// It's not really required in production because we know the script exists
+	// However, during testing things can go wrong
+	if input.cwd != "" {
+		// check if path is valid and exists
+		if _, err := os.Stat(input.cwd); os.IsNotExist(err) {
+			return nil, fmt.Errorf("cwd path does not exist: %s", input.cwd)
+		}
+		luaState.DoString("package.path = package.path .. ';" + input.cwd + "/?.lua'")
+	}
 
 	// Run the user-provided Lua script
 	if err := luaState.DoString(string(input.script)); err != nil {
@@ -147,13 +156,19 @@ func run(input runInput) ([]byte, error) {
 	return data, nil
 }
 
+func exit(message error) {
+	fmt.Println(message)
+	syscall.Exit(1)
+}
+
 func handleError[T interface{}](data T, err error) (T, error) {
 	if err == nil {
 		return data, nil
 	}
 
-	fmt.Println("Error:", err)
-	syscall.Exit(1)
+	exit(err)
+
+	// this will never happen at this stage, but we need to return it
 	return data, err
 }
 
@@ -180,6 +195,11 @@ func main() {
 	luaModuleNames, _ := handleError(findAllLuaAssetModules("lua/"))
 
 	luaModules, _ := handleError(loadLuaAssetModules(luaModuleNames))
+
+	// Check if source file exists
+	if _, err := os.Stat(luaScriptFile); os.IsNotExist(err) {
+		exit(fmt.Errorf("file does not exist: %s", luaScriptFile))
+	}
 
 	// Run user-provided Lua script along with the custom module
 	userScript, _ := handleError(os.ReadFile(luaScriptFile))
