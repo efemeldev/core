@@ -1,3 +1,5 @@
+local dummy = require "./dummy"
+
 return {
-    environment = "test"
+    environment = dummy.val
 }

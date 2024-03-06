@@ -167,7 +167,11 @@ func getLuaTable(input getLuaTableInput) (*lua.LTable, error) {
 		if _, err := os.Stat(input.cwd); os.IsNotExist(err) {
 			return nil, fmt.Errorf("cwd path does not exist: %s", input.cwd)
 		}
-		input.luaState.DoString("package.path = package.path .. ';" + input.cwd + "/?.lua'")
+
+		// escape the path otherwise it will break lua requires
+		cwd := strings.ReplaceAll(input.cwd, "\\", "\\\\")
+
+		input.luaState.DoString("package.path = package.path .. ';" + cwd + "/?.lua'")
 	}
 
 	// Run the user-provided Lua script
