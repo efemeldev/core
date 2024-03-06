@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 
 	lua "github.com/yuin/gopher-lua"
@@ -189,28 +190,29 @@ func main() {
 
 	// Check if output file is provided
 	if flag.NArg() < 1 {
-		fmt.Println("Usage: go run . -output <yaml|json> <efemel script>")
+		fmt.Println("Usage: go run . -output <yaml|json> <efemel script glob>")
 		return
 	}
 
-	// Get the path to the Lua script file from the command-line argument
-	luaScriptFile := flag.Args()[0]
+	var filenames []string
+
+	for _, arg := range flag.Args() {
+		// Use filepath.Glob to get a slice of filenames that match the glob pattern
+		matchedFilenames, _ := handleError(filepath.Glob(arg))
+		// append the filenames to the list
+		filenames = append(filenames, matchedFilenames...)
+	}
+
+	if len(filenames) == 0 {
+		fmt.Println("No files found")
+		return
+	}
 
 	formatter, _ := handleError(getFormatter(*outputFormat, *outputUserSuffix))
-
-	outputFilename := generateOutputFilename(luaScriptFile, formatter.suffix)
 
 	luaModuleNames, _ := handleError(findAllLuaAssetModules("lua/"))
 
 	luaModules, _ := handleError(loadLuaAssetModules(luaModuleNames))
-
-	// Check if source file exists
-	if _, err := os.Stat(luaScriptFile); os.IsNotExist(err) {
-		exit(fmt.Errorf("file does not exist: %s", luaScriptFile))
-	}
-
-	// Run user-provided Lua script along with the custom module
-	userScript, _ := handleError(os.ReadFile(luaScriptFile))
 
 	luaState, _ := handleError(initLuaState(initLuaStateInput{
 		luaModules: luaModules,
@@ -218,21 +220,45 @@ func main() {
 
 	defer luaState.Close()
 
-	luaThread, _ := luaState.NewThread()
+	var wg sync.WaitGroup
 
-	// Run the Lua script
-	data, _ := handleError(run(runInput{
-		format:   formatter.Marshal,
-		script:   userScript,
-		luaState: luaThread,
-		cwd:      getPathToFile(luaScriptFile),
-	}))
+	// loop through the filenames and process each one in a separate goroutine
+	for _, filename := range filenames {
 
-	// Write the result to the output file
-	err := os.WriteFile(outputFilename, data, 0644)
-	if err != nil {
-		fmt.Println("Error:", err)
-		return
+		fmt.Println("Processing", filename)
+		wg.Add(1)
+
+		go func(filename string) {
+			defer wg.Done()
+
+			fmt.Println("Processing goroutine", filename)
+
+			outputFilename := generateOutputFilename(filename, formatter.suffix)
+			// Read the Lua script
+			userScript, _ := handleError(os.ReadFile(filename))
+			luaThread, _ := luaState.NewThread()
+
+			// // Run the Lua script
+			data, _ := handleError(run(runInput{
+				format:   formatter.Marshal,
+				script:   userScript,
+				luaState: luaThread,
+				cwd:      getPathToFile(filename),
+			}))
+
+			// // Write the result to the output file
+			err := os.WriteFile(outputFilename, data, 0644)
+			if err != nil {
+				fmt.Println("Error:", err)
+				return
+			}
+
+			fmt.Println("Output written to", outputFilename)
+
+		}(filename)
 	}
+
+	// Wait for all goroutines to finish
+	wg.Wait()
 
 }

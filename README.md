@@ -42,20 +42,18 @@ go build -ldflags="-s -w" -o efemel
 - [x] Refactor `main.go`
 - [x] Set CWD per input script so that lua modules can be referenced from the same folder
 - [x] Error handler
+- [x] Add support for multiple file input using glob
+- [x] Multi core configuration generation
 - [ ] Use a builder pattern to add formatters, custom modules, lua functions, etc
 - [ ] Add variable input (like tfvars) and implement variable usage in code
 - [ ] Standardise output module injection
 - [ ] Organise project structure
-- [ ] Add glob variable input and output generation per var file
-- [ ] Add support for multiple file input using glob
-- [ ] Convert main function into one that runs an array of functions that generate the final output. Note that these functions should have access to all previous outputs
 - [ ] Implement custom modules folder that allows users to override any existing ones
 - [ ] Figure out signing mac binaries
 - [ ] Add tests
 - [ ] Add CI/CD
 - [ ] Add documentation
 - [ ] Add examples
-- [ ] Multi core configuration generation
 
 ## Multiple input files
 
