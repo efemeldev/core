@@ -224,14 +224,10 @@ func main() {
 
 	// loop through the filenames and process each one in a separate goroutine
 	for _, filename := range filenames {
-
-		fmt.Println("Processing", filename)
 		wg.Add(1)
 
 		go func(filename string) {
 			defer wg.Done()
-
-			fmt.Println("Processing goroutine", filename)
 
 			outputFilename := generateOutputFilename(filename, formatter.suffix)
 			// Read the Lua script
@@ -247,13 +243,12 @@ func main() {
 			}))
 
 			// // Write the result to the output file
-			err := os.WriteFile(outputFilename, data, 0644)
-			if err != nil {
+			if err := os.WriteFile(outputFilename, data, 0644); err != nil {
 				fmt.Println("Error:", err)
 				return
 			}
 
-			fmt.Println("Output written to", outputFilename)
+			fmt.Println("File processed", outputFilename)
 
 		}(filename)
 	}
