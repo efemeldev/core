@@ -81,7 +81,7 @@ func main() {
 	// Define command-line flags
 	outputFormat := flag.String("output", "", "Output format")
 	outputFileExtension := flag.String("suffix", "", "Output file extension")
-	varsFile := flag.String("varsFile", "", "File with vars to be used in the script")
+	varsFile := flag.String("vars", "", "File with vars to be used in the script")
 	flag.Parse()
 
 	// Check if output file is provided

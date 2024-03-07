@@ -45,7 +45,7 @@ go build -ldflags="-s -w" -o efemel
 - [x] Add support for multiple file input using glob
 - [x] Multi core configuration generation
 - [x] Add variable input (like tfvars) and implement variable usage in code
-- [ ] Use a builder pattern to add formatters, custom modules, lua functions, etc
+- [x] Use a builder pattern to add formatters, custom modules, lua functions, etc
 - [ ] Module loader package that either loads local files or assets
 - [ ] File reader/writer package that can write to filesystem or keep everything in memory (for testing)
 - [ ] Standardise output module injection
