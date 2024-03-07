@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	lua "github.com/yuin/gopher-lua"
 )
@@ -267,10 +268,16 @@ func main() {
 
 	luaModules := handleError(findAllLuaAssetModules("lua/"))
 
+	start := time.Now()
+
 	luaState := handleError(initLuaState(initLuaStateInput{
 		luaModules: luaModules,
 		varsFile: *varsFile,
 	}))
+
+	elapsed := time.Since(start)
+
+	fmt.Printf("Lua state initialized in %s\n", elapsed)
 
 	defer luaState.Close()
 
@@ -283,6 +290,7 @@ func main() {
 		go func(filename string) {
 			defer wg.Done()
 
+			start := time.Now()
 			outputFilename := generateOutputFilename(filename, formatter.suffix)
 			// Read the Lua script
 			userScript := handleError(os.ReadFile(filename))
@@ -302,7 +310,9 @@ func main() {
 				return
 			}
 
-			fmt.Println("File processed", outputFilename)
+			elapsed := time.Since(start)
+
+			fmt.Printf("File %s processed in %s\n", outputFilename, elapsed)
 
 		}(filename)
 	}
