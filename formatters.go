@@ -21,7 +21,7 @@ func getSuffix(suffix string, defaultSuffix string) string {
 
 // Function that takes in a parameter called format and it looks in the struct
 // and either returns the formatter function or throws an error
-func getFormatter(format string, userSuffix string) (*Formatter, error) {
+func getFormatter(format string, outputFileExtension string) (*Formatter, error) {
 
 	if format == "" {
 		return nil, fmt.Errorf("output format not provided")
@@ -29,9 +29,9 @@ func getFormatter(format string, userSuffix string) (*Formatter, error) {
 
 	switch format {
 	case "json":
-		return &Formatter{Marshal: json.Marshal, suffix: getSuffix("json", userSuffix)}, nil
+		return &Formatter{Marshal: json.Marshal, suffix: getSuffix("json", outputFileExtension)}, nil
 	case "yaml":
-		return &Formatter{Marshal: yaml.Marshal, suffix: getSuffix("yaml", userSuffix)}, nil
+		return &Formatter{Marshal: yaml.Marshal, suffix: getSuffix("yaml", outputFileExtension)}, nil
 	default:
 		return nil, fmt.Errorf("unsupported format: %s", format)
 	}
