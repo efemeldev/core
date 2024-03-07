@@ -227,15 +227,12 @@ func exit(message error) {
 	syscall.Exit(1)
 }
 
-func handleError[T interface{}](data T, err error) (T, error) {
-	if err == nil {
-		return data, nil
+func handleError[T interface{}](data T, err error) (T) {
+	if err != nil {
+		exit(err)
 	}
 
-	exit(err)
-
-	// this will never happen at this stage, but we need to return it
-	return data, err
+	return data
 }
 
 func main() {
@@ -256,7 +253,7 @@ func main() {
 
 	for _, arg := range flag.Args() {
 		// Use filepath.Glob to get a slice of filenames that match the glob pattern
-		matchedFilenames, _ := handleError(filepath.Glob(arg))
+		matchedFilenames := handleError(filepath.Glob(arg))
 		// append the filenames to the list
 		filenames = append(filenames, matchedFilenames...)
 	}
@@ -266,11 +263,11 @@ func main() {
 		return
 	}
 
-	formatter, _ := handleError(getFormatter(*outputFormat, *outputUserSuffix))
+	formatter := handleError(getFormatter(*outputFormat, *outputUserSuffix))
 
-	luaModules, _ := handleError(findAllLuaAssetModules("lua/"))
+	luaModules := handleError(findAllLuaAssetModules("lua/"))
 
-	luaState, _ := handleError(initLuaState(initLuaStateInput{
+	luaState := handleError(initLuaState(initLuaStateInput{
 		luaModules: luaModules,
 		varsFile: *varsFile,
 	}))
@@ -288,11 +285,11 @@ func main() {
 
 			outputFilename := generateOutputFilename(filename, formatter.suffix)
 			// Read the Lua script
-			userScript, _ := handleError(os.ReadFile(filename))
+			userScript := handleError(os.ReadFile(filename))
 			luaThread, _ := luaState.NewThread()
 
 			// // Run the Lua script
-			data, _ := handleError(run(runInput{
+			data := handleError(run(runInput{
 				format:   formatter.Marshal,
 				script:   userScript,
 				luaState: luaThread,
