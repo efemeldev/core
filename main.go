@@ -117,7 +117,10 @@ func main() {
 	})
 
 	// set vars file
-	luaState.SetGlobalTableFromFile("vars", *varsFile)
+
+	if *varsFile != "" {
+		luaState.SetGlobalTableFromFile("vars", *varsFile)
+	}
 
 	start := time.Now()
 
