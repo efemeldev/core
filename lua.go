@@ -76,16 +76,17 @@ func (l *LuaStateBuilder) SetCWD(cwd string) *LuaStateBuilder {
 func (l *LuaStateBuilder) Build() (error) {
 	if l.state == nil {
 		l.state = lua.NewState()
-		
-		for _, action := range l.actions {
-			if err := action(l.state); err != nil {
-				return err
-			}
-		}
-
-		// clear the actions
-		l.actions = make([]func(L *lua.LState) error, 0)
 	}
+	
+	for _, action := range l.actions {
+		if err := action(l.state); err != nil {
+			return err
+		}
+	}
+
+	// clear the actions
+	l.actions = make([]func(L *lua.LState) error, 0)
+
 
 	return nil
 }
@@ -138,19 +139,61 @@ func (l *LuaStateBuilder) Close() {
 }
 
 // run script
-func (l *LuaStateBuilder) RunScript(script string, cwd string) error {
-	l.SetCWD(cwd)
+func RunScript[T any](lua *LuaStateBuilder, script string, getValue func(state *lua.LState) (T, error))  (T, error) {
+	if err := lua.state.DoString(script); err != nil {
+		return null[T](), err
+	}
 
-	return l.state.DoString(script)
+	returnedValue, err := getValue(lua.state)
+
+	if err != nil {
+		return null[T](), err
+	}
+
+	return returnedValue, nil
 }
 
-func (l *LuaStateBuilder) RunFile(file string) error {
-
+func RunFile[T any](lua *LuaStateBuilder, file string, getValue func(state *lua.LState) (T, error)) (T, error) {
 	script, err := os.ReadFile(file)
 
 	if err != nil {
-		return err
+		return null[T](), err
 	}
 
-	return l.RunScript(string(script), file)
+	res, err := RunScript(lua, string(script), getValue)
+
+	if err != nil {
+		return null[T](), err
+	}
+
+	return res, nil
+}
+
+
+// get returned table from script
+func GetReturnedTable(state *lua.LState) (interface{}, error) {
+	returnedValue := state.Get(-1)
+
+	// Get the arguments from Lua
+	dataTable, ok := returnedValue.(*lua.LTable)
+
+	if !ok {
+		return nil, fmt.Errorf("expected a table, got %T", returnedValue)
+	}
+
+	return luaTableToMap(dataTable), nil
+}
+
+// get returned string from script
+func GetReturnedString(state *lua.LState) (string, error) {
+	returnedValue := state.Get(-1)
+
+	// Get the arguments from Lua
+	dataString, ok := returnedValue.(lua.LString)
+
+	if !ok {
+		return "", fmt.Errorf("expected a string, got %T", returnedValue)
+	}
+
+	return string(dataString), nil
 }

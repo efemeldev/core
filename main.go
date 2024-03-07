@@ -13,42 +13,6 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
-// Function to recursively convert Lua table to Go map
-func luaValueToInterface(value lua.LValue) interface{} {
-	switch value.Type() {
-	case lua.LTBool:
-		return bool(value.(lua.LBool))
-	case lua.LTNumber:
-		return float64(value.(lua.LNumber))
-	case lua.LTString:
-		return string(value.(lua.LString))
-	case lua.LTTable:
-		return luaTableToMap(value.(*lua.LTable))
-	default:
-		return nil
-	}
-}
-
-func luaTableToMap(table *lua.LTable) interface{} {
-	if table.MaxN() > 0 {
-		// If the table has sequential integer keys starting from 1, treat it as an array
-		arr := make([]interface{}, table.MaxN())
-		table.ForEach(func(i lua.LValue, value lua.LValue) {
-			idx := int(i.(lua.LNumber))
-			arr[idx-1] = luaValueToInterface(value)
-		})
-		return arr
-	}
-
-	// If not, treat it as a map
-	result := make(map[string]interface{})
-
-	table.ForEach(func(key, value lua.LValue) {
-		result[key.String()] = luaValueToInterface(value)
-	})
-
-	return result
-}
 
 func findAllLuaAssetModules(prefix string) ([]string, error) {
 	var result []string
@@ -85,76 +49,6 @@ func generateOutputFilename(inputFilename, outputFormat string) string {
 
 	// Define the output YAML file name
 	return fileName + "." + outputFormat
-}
-
-type getLuaTableInput struct {
-	luaState *lua.LState
-	script   string
-	cwd      string
-}
-
-func getLuaTable(input getLuaTableInput) (*lua.LTable, error) {
-	// Set the current working directory
-	// There are a bunch of checks here to make sure the path is valid
-	// It's not really required in production because we know the script exists
-	// However, during testing things can go wrong
-	if input.cwd != "" {
-		// check if path is valid and exists
-		if _, err := os.Stat(input.cwd); os.IsNotExist(err) {
-			return nil, fmt.Errorf("cwd path does not exist: %s", input.cwd)
-		}
-
-		// escape the path otherwise it will break lua requires
-		cwd := strings.ReplaceAll(input.cwd, "\\", "\\\\")
-
-		input.luaState.DoString("package.path = package.path .. ';" + cwd + "/?.lua'")
-	}
-
-	// Run the user-provided Lua script
-	if err := input.luaState.DoString(string(input.script)); err != nil {
-		return nil, err
-	}
-
-	returnedValue := input.luaState.Get(-1)
-
-	// Get the arguments from Lua
-
-	dataTable, ok := returnedValue.(*lua.LTable)
-
-	if !ok {
-		return nil, fmt.Errorf("expected a table, got %T", returnedValue)
-	}
-
-	return dataTable, nil
-}
-
-type runInput struct {
-	format   func(v interface{}) ([]byte, error)
-	script   []byte
-	luaState *lua.LState
-	cwd      string
-}
-
-func run(input runInput) ([]byte, error) {
-	dataTable, err := getLuaTable(getLuaTableInput{
-		luaState: input.luaState,
-		script:   string(input.script),
-		cwd:      input.cwd,
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	goMap := luaTableToMap(dataTable)
-
-	data, err := input.format(goMap)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return data, nil
 }
 
 func exit(message error) {
@@ -248,8 +142,6 @@ func main() {
 
 			start := time.Now()
 			outputFilename := generateOutputFilename(filename, formatter.suffix)
-			// Read the Lua script
-			userScript := handleError(os.ReadFile(filename))
 			
 			luaState, err := luaState.Clone()
 
@@ -258,16 +150,28 @@ func main() {
 				return
 			}
 
-			// // Run the Lua script
-			data := handleError(run(runInput{
-				format:   formatter.Marshal,
-				script:   userScript,
-				luaState: luaState.state,
-				cwd:      getPathToFile(filename),
-			}))
+
+			if err := luaState.SetCWD(getPathToFile(filename)).Build(); err != nil {
+				fmt.Println("Error:", err)
+				return
+			}
+
+			res, err := RunFile(luaState, filename, GetReturnedTable)
+
+			if err != nil {
+				fmt.Println("Error:", err)
+				return
+			}
+
+			formattedData, err := formatter.Marshal(res)
+
+			if err != nil {
+				fmt.Println("Error:", err)
+				return
+			}
 
 			// // Write the result to the output file
-			if err := os.WriteFile(outputFilename, data, 0644); err != nil {
+			if err := os.WriteFile(outputFilename, formattedData, 0644); err != nil {
 				fmt.Println("Error:", err)
 				return
 			}
