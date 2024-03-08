@@ -81,6 +81,7 @@ func main() {
 	// Define command-line flags
 	outputFormat := flag.String("output", "", "Output format")
 	outputFileExtension := flag.String("suffix", "", "Output file extension")
+	dryRun := flag.Bool("dryrun", false, "Dry run")
 	varsFile := flag.String("vars", "", "File with vars to be used in the script")
 	flag.Parse()
 
@@ -173,15 +174,21 @@ func main() {
 				return
 			}
 
+			elapsed := time.Since(start)
+
+			fmt.Printf("[%s] processed in %s\n", outputFilename, elapsed)
+
+			// If dry run is enabled, print the result to the console
+			if *dryRun {
+				fmt.Println(string(formattedData))
+				return
+			}
+
 			// // Write the result to the output file
 			if err := os.WriteFile(outputFilename, formattedData, 0644); err != nil {
 				fmt.Println("Error:", err)
 				return
-			}
-
-			elapsed := time.Since(start)
-
-			fmt.Printf("File %s processed in %s\n", outputFilename, elapsed)
+			}			
 
 		}(filename)
 	}
