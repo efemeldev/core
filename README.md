@@ -46,14 +46,16 @@ go build -ldflags="-s -w" -o efemel
 - [x] Multi core configuration generation
 - [x] Add variable input (like tfvars) and implement variable usage in code
 - [x] Use a builder pattern to add formatters, custom modules, lua functions, etc
+- [ ] Implement dry run
+- [ ] Implement concat strings function
+- [ ] Implement merge tables function
 - [ ] Module loader package that either loads local files or assets
 - [ ] File reader/writer package that can write to filesystem or keep everything in memory (for testing)
-- [ ] Standardise output module injection
 - [ ] Add better logging
-- [ ] Organise project structure
-- [ ] Implement custom modules folder that allows users to override any existing ones ?
-- [ ] Figure out signing mac binaries
 - [ ] Add tests
+- [ ] Standardise output module injection
+- [ ] Organise project structure
+- [ ] Figure out signing mac binaries
 - [ ] Add CI/CD
 - [ ] Add documentation
 - [ ] Add examples
