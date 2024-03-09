@@ -76,6 +76,11 @@ func getAllFilesFromGlobs(globs []string) ([]string, error) {
 	return result, nil
 }
 
+type FileData struct {
+	Filename string
+	Data     []byte
+}
+
 func main() {
 
 	// Define command-line flags
@@ -137,6 +142,8 @@ func main() {
 
 	var wg sync.WaitGroup
 
+	fileDataChannel := make(chan FileData, len(filenames))
+
 	// loop through the filenames and process each one in a separate goroutine
 	for _, filename := range filenames {
 		wg.Add(1)
@@ -146,14 +153,12 @@ func main() {
 
 			start := time.Now()
 			outputFilename := generateOutputFilename(filename, formatter.suffix)
-			
-			luaState, err := luaState.Clone()
 
+			luaState, err := luaState.Clone()
 			if err != nil {
 				fmt.Println("Error:", err)
 				return
 			}
-
 
 			if err := luaState.SetCWD(getPathToFile(filename)).Build(); err != nil {
 				fmt.Println("Error:", err)
@@ -161,14 +166,12 @@ func main() {
 			}
 
 			res, err := RunFile(luaState, filename, GetReturnedTable)
-
 			if err != nil {
 				fmt.Println("Error:", err)
 				return
 			}
 
 			formattedData, err := formatter.Marshal(res)
-
 			if err != nil {
 				fmt.Println("Error:", err)
 				return
@@ -178,22 +181,31 @@ func main() {
 
 			fmt.Printf("[%s] processed in %s\n", outputFilename, elapsed)
 
-			// If dry run is enabled, print the result to the console
-			if *dryRun {
-				fmt.Println(string(formattedData))
-				return
-			}
-
-			// // Write the result to the output file
-			if err := os.WriteFile(outputFilename, formattedData, 0644); err != nil {
-				fmt.Println("Error:", err)
-				return
-			}			
+			// Push formatted data and filename into the channel
+			fileDataChannel <- FileData{Filename: outputFilename, Data: formattedData}
 
 		}(filename)
 	}
 
-	// Wait for all goroutines to finish
-	wg.Wait()
+	// Close the channel after all goroutines are done
+	go func() {
+		wg.Wait()
+		close(fileDataChannel)
+	}()
 
+	// Consume from the channel and write data to files
+
+	if *dryRun {
+		for fileData := range fileDataChannel {
+			fmt.Println(string(fileData.Data))
+		}
+		return
+	}
+
+	for fileData := range fileDataChannel {
+		if err := os.WriteFile(fileData.Filename, fileData.Data, 0644); err != nil {
+			fmt.Println("Error:", err)
+			return
+		}
+	}
 }

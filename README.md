@@ -46,7 +46,8 @@ go build -ldflags="-s -w" -o efemel
 - [x] Multi core configuration generation
 - [x] Add variable input (like tfvars) and implement variable usage in code
 - [x] Use a builder pattern to add formatters, custom modules, lua functions, etc
-- [ ] Implement dry run
+- [x] Implement dry run
+- [ ] Implement piping output
 - [ ] Implement concat strings function
 - [ ] Implement merge tables function
 - [ ] Module loader package that either loads local files or assets
