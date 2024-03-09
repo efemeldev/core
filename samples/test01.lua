@@ -6,5 +6,6 @@ return {
         test = testAdd(1,2),
     },
     data = data,
-    environment = vars.environment
+    environment = vars.environment,
+    path = package.path
 }

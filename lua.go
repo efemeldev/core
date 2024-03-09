@@ -5,146 +5,90 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	lua "github.com/yuin/gopher-lua"
 )
 
-type LuaStateBuilder struct {
-	state         *lua.LState
-	actions       []func(L *lua.LState) error
-	canAddActions bool
+var (
+	cwdMap = make(map[string]bool)
+	cwdMutex sync.Mutex
+)
+
+func AddGlobalFunction(state *lua.LState, name string, function func(L *lua.LState) int) {
+	state.SetGlobal(name, state.NewFunction(function))
 }
 
-// NewLuaBuilder creates a new LuaStateBuilder with optional state
-func NewLuaStateBuilder(state *lua.LState) *LuaStateBuilder {
-	return &LuaStateBuilder{
-		state:         state,
-		actions:       make([]func(L *lua.LState) error, 0),
-		canAddActions: true,
-	}
-}
-
-// add action to the builder
-func (l *LuaStateBuilder) AddAction(action func(L *lua.LState) error) *LuaStateBuilder {
-	if !l.canAddActions {
-		panic("cannot add actions after building the state")
-	}
-
-	l.actions = append(l.actions, action)
-	return l
-}
-
-func (l *LuaStateBuilder) AddGlobalFunction(name string, function func(L *lua.LState) int) *LuaStateBuilder {
-	l.AddAction(func(L *lua.LState) error {
-		L.SetGlobal(name, L.NewFunction(function))
-		return nil
-	})
-	return l
-}
-
-// TODO: Add custom module loader
-func (l *LuaStateBuilder) LoadCustomLuaModule(module string) *LuaStateBuilder {
-	l.AddAction(func(L *lua.LState) error {
-		if err := L.DoString(module); err != nil {
-			return err
-		}
-		return nil
-	})
-
-	return l
+func LoadCustomLuaModule(state *lua.LState, module string) error {
+	err := state.DoString(module)
+	return err // nil or error
 }
 
 // set current working directory so that require can find the modules
-func (l *LuaStateBuilder) SetCWD(cwd string) *LuaStateBuilder {
-	l.AddAction(func(L *lua.LState) error {
-		// check if path is valid and exists
-		if _, err := os.Stat(cwd); os.IsNotExist(err) {
-			return fmt.Errorf("cwd path does not exist: %s", cwd)
-		}
+func SetCWD(state *lua.LState, cwd string) error {
+	cwdMutex.Lock()
+	defer cwdMutex.Unlock()
+    // check if cwd is already in the map
+    if _, exists := cwdMap[cwd]; exists {
+        return nil // cwd is already in the map, do nothing
+    }
 
-		cwd := strings.ReplaceAll(cwd, "\\", "\\\\")
-		if err := L.DoString("package.path = package.path .. ';" + cwd + "/?.lua'"); err != nil {
-			return err
-		}
-		return nil
-	})
-
-	return l
-}
-
-// process actions and return the state
-func (l *LuaStateBuilder) Build() (error) {
-	if l.state == nil {
-		l.state = lua.NewState()
-	}
-	
-	for _, action := range l.actions {
-		if err := action(l.state); err != nil {
-			return err
-		}
+	// check if path is valid and exists
+	if _, err := os.Stat(cwd); os.IsNotExist(err) {
+		return fmt.Errorf("cwd path does not exist: %s", cwd)
 	}
 
-	// clear the actions
-	l.actions = make([]func(L *lua.LState) error, 0)
+	cwd = strings.ReplaceAll(cwd, "\\", "\\\\")
 
+	err := state.DoString("package.path = package.path .. ';" + cwd + "\\?.lua'")
 
-	return nil
-}
+    if err != nil {
+		return err
+    }
 
-// clone the state, add actions and return the new state
-func (l *LuaStateBuilder) Clone() (*LuaStateBuilder, error) {
-	thread, _ := l.state.NewThread()
-	return NewLuaStateBuilder(thread), nil
+	// if there was no error, add cwd to the map
+	cwdMap[cwd] = true
+
+    return nil // nil or error
 }
 
 // set global table from script
-func (l *LuaStateBuilder) SetGlobalTableFromFile(name string, file string) *LuaStateBuilder {
+func SetGlobalTableFromFile(state *lua.LState, name string, file string) error {
 
 	// get folder of the file
-	l.SetCWD(filepath.Dir(file))
+	SetCWD(state, filepath.Dir(file))
 
-	l.AddAction(func(L *lua.LState) error {
+	script, err := os.ReadFile(file)
 
-		script, err := os.ReadFile(file)
-
-		if err != nil {
-			return err
-		}
-
-		if err := L.DoString(string(script)); err != nil {
-			return err
-		}
-
-		returnedValue := L.Get(-1)
-
-		// Get the arguments from Lua
-		dataTable, ok := returnedValue.(*lua.LTable)
-
-		if !ok {
-			return fmt.Errorf("expected a table, got %T", returnedValue)
-		}
-
-		L.SetGlobal(name, dataTable)
-		return nil
-	})
-
-	return l
-}
-
-// close the state
-func (l *LuaStateBuilder) Close() {
-	if l.state != nil {
-		l.state.Close()
+	if err != nil {
+		return err
 	}
+
+	if err := state.DoString(string(script)); err != nil {
+		return err
+	}
+
+	returnedValue := state.Get(-1)
+
+	// Get the arguments from Lua
+	dataTable, ok := returnedValue.(*lua.LTable)
+
+	if !ok {
+		return fmt.Errorf("expected a table, got %T", returnedValue)
+	}
+
+	state.SetGlobal(name, dataTable)
+	return nil
+	
 }
 
 // run script
-func RunScript[T any](lua *LuaStateBuilder, script string, getValue func(state *lua.LState) (T, error))  (T, error) {
-	if err := lua.state.DoString(script); err != nil {
+func RunScript[T any](lua *lua.LState, script string, getValue func(state *lua.LState) (T, error))  (T, error) {
+	if err := lua.DoString(script); err != nil {
 		return null[T](), err
 	}
 
-	returnedValue, err := getValue(lua.state)
+	returnedValue, err := getValue(lua)
 
 	if err != nil {
 		return null[T](), err
@@ -152,23 +96,6 @@ func RunScript[T any](lua *LuaStateBuilder, script string, getValue func(state *
 
 	return returnedValue, nil
 }
-
-func RunFile[T any](lua *LuaStateBuilder, file string, getValue func(state *lua.LState) (T, error)) (T, error) {
-	script, err := os.ReadFile(file)
-
-	if err != nil {
-		return null[T](), err
-	}
-
-	res, err := RunScript(lua, string(script), getValue)
-
-	if err != nil {
-		return null[T](), err
-	}
-
-	return res, nil
-}
-
 
 // get returned table from script
 func GetReturnedTable(state *lua.LState) (interface{}, error) {
@@ -196,4 +123,57 @@ func GetReturnedString(state *lua.LState) (string, error) {
 	}
 
 	return string(dataString), nil
+}
+
+type LuaStateBuilder func(state *lua.LState) (*lua.LState, error)
+
+// LuaStatePool represents a pool of Lua states
+type LuaStatePool struct {
+    pool *sync.Pool
+	size int
+}
+
+func NewLuaStatePool(initialSize int, stateSetup func(L *lua.LState)(*lua.LState, error)) *LuaStatePool {
+	pool := sync.Pool{}
+	// Initialize the pool with initialSize Lua states
+	for i := 0; i < initialSize; i++ {
+		state, err := stateSetup(lua.NewState())
+
+		if err != nil {
+			panic(err)
+		}
+
+		pool.Put(state)
+
+		fmt.Printf("Initialized Lua state %d\n", i+1)
+	}
+	return &LuaStatePool{pool: &pool, size: initialSize } // Fix: Use the sync.Pool value directly instead of copying it
+}
+
+// Get retrieves a Lua state from the pool
+func (p *LuaStatePool) Get() *lua.LState {
+	if state, ok := p.pool.Get().(*lua.LState); ok {
+		return state
+	}
+	return lua.NewState() // If pool is empty, create a new Lua state
+}
+
+// Put returns a Lua state to the pool
+func (p *LuaStatePool) Put(L *lua.LState) {
+	L.SetTop(0) // Reset stack
+	p.pool.Put(L)
+}
+
+// Close closes all Lua states in the pool
+func (p *LuaStatePool) Close() {
+	// Close all Lua states in the pool
+	for i := 0; i < p.size; i++ {
+		if state := p.Get(); state != nil {
+			state.Close()
+			fmt.Printf("Closed Lua state %d\n", i)
+			i++
+		} else {
+			break
+		}
+	}
 }
