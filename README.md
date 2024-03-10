@@ -47,11 +47,13 @@ go build -ldflags="-s -w" -o efemel
 - [x] Add variable input (like tfvars) and implement variable usage in code
 - [x] Use a builder pattern to add formatters, custom modules, lua functions, etc
 - [x] Implement dry run
-- [ ] Implement piping output
-- [ ] Implement concat strings function
-- [ ] Implement merge tables function
-- [ ] Module loader package that either loads local files or assets
+- [x] Concurrency controls
+- [ ] Implement statistics capture
 - [ ] File reader/writer package that can write to filesystem or keep everything in memory (for testing)
+- [ ] Implement post processing function that can be used to modify the output before it is written to a file
+- [ ] Implement concat strings function for Lua
+- [ ] Implement merge tables function for Lua
+- [ ] Module loader package that either loads local files or assets
 - [ ] Add better logging
 - [ ] Add tests
 - [ ] Standardise output module injection

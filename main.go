@@ -88,6 +88,7 @@ func main() {
 	dryRun := flag.Bool("dryrun", false, "Dry run")
 	varsFile := flag.String("vars", "", "File with vars to be used in the script")
 	workerCount := flag.Int("workers", 2, "Number of workers")
+	writerCount := flag.Int("writers", 1, "Number of writers")
 	inputChannelBufferSize := flag.Int("input-buffer", 10, "Input channel buffer size")
 	outputChannelBufferSize := flag.Int("output-buffer", 10, "Output channel buffer size")
 	flag.Parse()
@@ -221,12 +222,25 @@ func main() {
 			fmt.Println(string(fileData.Filename))
 		}
 	} else {
-		for fileData := range dataOutputChannel {
-			if err := os.WriteFile(fileData.OutputFilename, fileData.Data, 0644); err != nil {
-				fmt.Println("Error:", err)
-				return
-			}
+
+		writeWaitGroup := sync.WaitGroup{}
+
+		writeWaitGroup.Add(*writerCount)
+
+		for i := 0; i < *writerCount; i++ {
+
+			go func() {
+				defer writeWaitGroup.Done()
+
+				for fileData := range dataOutputChannel {
+					if err := os.WriteFile(fileData.OutputFilename, fileData.Data, 0644); err != nil {
+						panic(err)
+					}
+				}
+			}()
 		}
+
+		writeWaitGroup.Wait()
 	}
 	fmt.Println("All jobs are done")
 }
