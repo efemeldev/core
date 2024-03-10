@@ -12,7 +12,6 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
-
 func findAllLuaAssetModules(prefix string) ([]string, error) {
 	var result []string
 	for _, name := range AssetNames() {
@@ -103,17 +102,18 @@ func main() {
 
 	// Initialize Lua state
 
-	luaStatePool := NewLuaStatePool(10, func(luaState *lua.LState) (*lua.LState, error) {
+	luaStateManagerPool := NewLuaStateManagerPool(10, func(luaStateManager *LuaStateManager) (*LuaStateManager, error) {
+
 		// load all modules
 		for _, module := range luaModules {
 			loadedModule := handleError(loadLuaAssetModule(module))
-			if err := LoadCustomLuaModule(luaState, loadedModule); err != nil {
+
+			if err := luaStateManager.LoadCustomLuaModule(loadedModule); err != nil {
 				return nil, err
 			}
 		}
 
-		// add testAdd function
-		AddGlobalFunction(luaState, "testAdd", func(L *lua.LState) int {
+		luaStateManager.AddGlobalFunction("testAdd", func(L *lua.LState) int {
 			a := L.ToInt(1)
 			b := L.ToInt(2)
 
@@ -123,17 +123,32 @@ func main() {
 			return 1
 		})
 
+		// load vars file as a global table
 		if *varsFile != "" {
-			if err := SetGlobalTableFromFile(luaState, "vars", *varsFile); err != nil {
+
+			luaStateManager.AddPath(getPathToFile(*varsFile))
+
+			// load script
+
+			script, err := os.ReadFile(*varsFile)
+
+			if err != nil {
 				return nil, err
 			}
-		}
-		
-		return luaState, nil
 
+			value, err := RunScript(luaStateManager.state, string(script), GetReturnedLuaTable)
+
+			if err != nil {
+				return nil, err
+			}
+
+			luaStateManager.SetGlobalTable("vars", value)
+		}
+
+		return luaStateManager, nil
 	})
 
-	defer luaStatePool.Close()
+	defer luaStateManagerPool.Close()
 
 	fileDataChannel := make(chan FileData, len(filenames))
 
@@ -141,13 +156,13 @@ func main() {
 		// start := time.Now()
 		outputFilename := generateOutputFilename(input.Filename, formatter.suffix)
 
-		luaState := luaStatePool.Get()
+		luaStateManager := luaStateManagerPool.Get()
 
-		SetCWD(luaState, getPathToFile(input.Filename))
+		luaStateManager.AddPath(getPathToFile(input.Filename))
 
 		// get package.path from lua
 
-		res, err := RunScript(luaState, string(input.Data), GetReturnedTable)
+		res, err := RunScript(luaStateManager.state, string(input.Data), GetReturnedMap)
 		if err != nil {
 			fmt.Println("Error:", err)
 			return
@@ -166,7 +181,7 @@ func main() {
 		// Push formatted data and filename into the channel
 		fileDataChannel <- FileData{Filename: outputFilename, Data: formattedData}
 
-		luaStatePool.Put(luaState)
+		luaStateManagerPool.Put(luaStateManager)
 	})
 
 	filenameDataChannel := make(chan FileData)
