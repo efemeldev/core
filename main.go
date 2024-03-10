@@ -75,8 +75,9 @@ func getAllFilesFromGlobs(globs []string) ([]string, error) {
 }
 
 type FileData struct {
-	Filename string
-	Data     []byte
+	Filename       string
+	OutputFilename string
+	Data           []byte
 }
 
 func main() {
@@ -86,6 +87,9 @@ func main() {
 	outputFileExtension := flag.String("suffix", "", "Output file extension")
 	dryRun := flag.Bool("dryrun", false, "Dry run")
 	varsFile := flag.String("vars", "", "File with vars to be used in the script")
+	workerCount := flag.Int("workers", 2, "Number of workers")
+	inputChannelBufferSize := flag.Int("input-buffer", 10, "Input channel buffer size")
+	outputChannelBufferSize := flag.Int("output-buffer", 10, "Output channel buffer size")
 	flag.Parse()
 
 	// Check if output file is provided
@@ -100,16 +104,16 @@ func main() {
 
 	luaModules := handleError(findAllLuaAssetModules("lua/"))
 
-	// Initialize Lua state
+	// Initialize Lua workers
+	worker := func(id int, jobs <-chan FileData, results chan<- FileData, wg *sync.WaitGroup) {
 
-	luaStateManagerPool := NewLuaStateManagerPool(10, func(luaStateManager *LuaStateManager) (*LuaStateManager, error) {
+		luaStateManager := NewLuaStateManager()
 
-		// load all modules
 		for _, module := range luaModules {
 			loadedModule := handleError(loadLuaAssetModule(module))
 
 			if err := luaStateManager.LoadCustomLuaModule(loadedModule); err != nil {
-				return nil, err
+				panic(err)
 			}
 		}
 
@@ -133,103 +137,96 @@ func main() {
 			script, err := os.ReadFile(*varsFile)
 
 			if err != nil {
-				return nil, err
+				panic(err)
 			}
 
 			value, err := RunScript(luaStateManager.state, string(script), GetReturnedLuaTable)
 
 			if err != nil {
-				return nil, err
+				panic(err)
 			}
 
 			luaStateManager.SetGlobalTable("vars", value)
 		}
 
-		return luaStateManager, nil
-	})
+		defer wg.Done()
 
-	defer luaStateManagerPool.Close()
+		for job := range jobs {
+			luaStateManager.AddPath(getPathToFile(job.Filename))
 
-	fileDataChannel := make(chan FileData, len(filenames))
+			// get package.path from lua
 
-	pooledProcessor := Poolable(func(input FileData) {
-		// start := time.Now()
-		outputFilename := generateOutputFilename(input.Filename, formatter.suffix)
+			res, err := RunScript(luaStateManager.state, string(job.Data), GetReturnedMap)
+			if err != nil {
+				panic(err)
+			}
 
-		luaStateManager := luaStateManagerPool.Get()
+			formattedData, err := formatter.Marshal(res)
+			if err != nil {
+				panic(err)
+			}
 
-		luaStateManager.AddPath(getPathToFile(input.Filename))
+			// elapsed := time.Since(start)
 
-		// get package.path from lua
+			// fmt.Printf("[%s] processed in %s\n", outputFilename, elapsed)
 
-		res, err := RunScript(luaStateManager.state, string(input.Data), GetReturnedMap)
-		if err != nil {
-			fmt.Println("Error:", err)
-			return
+			// Push formatted data and filename into the channel
+			results <- FileData{Filename: job.Filename, OutputFilename: job.OutputFilename, Data: formattedData}
 		}
 
-		formattedData, err := formatter.Marshal(res)
-		if err != nil {
-			fmt.Println("Error:", err)
-			return
-		}
-
-		// elapsed := time.Since(start)
-
-		// fmt.Printf("[%s] processed in %s\n", outputFilename, elapsed)
-
-		// Push formatted data and filename into the channel
-		fileDataChannel <- FileData{Filename: outputFilename, Data: formattedData}
-
-		luaStateManagerPool.Put(luaStateManager)
-	})
-
-	filenameDataChannel := make(chan FileData)
-
-	// 10 concurrent goroutines to process the files
-	go pooledProcessor.Run(5, filenameDataChannel)
-
-	// loop through the filenames and process each one in a separate goroutine
-	for _, filename := range filenames {
-
-		script, err := os.ReadFile(filename)
-
-		if err != nil {
-			fmt.Println("Error:", err)
-			return
-		}
-
-		filenameDataChannel <- FileData{Filename: filename, Data: script}
+		fmt.Println("worker", id, "shutting down")
+		luaStateManager.Close()
 	}
 
-	close(filenameDataChannel)
+	dataInputChannel := make(chan FileData, *inputChannelBufferSize)
+	dataOutputChannel := make(chan FileData, *outputChannelBufferSize)
 
-	// create wait group to wait for all files to be processed
-	wg := sync.WaitGroup{}
-	wg.Add(1)
+	// Create a pool of workers
+	var wg sync.WaitGroup
+	for i := 1; i <= *workerCount; i++ {
+		wg.Add(1)
+		go worker(i, dataInputChannel, dataOutputChannel, &wg)
+	}
+
+	// Producer goroutine to send jobs
+	go func() {
+		defer close(dataInputChannel)
+
+		// loop through the filenames and process each one in a separate goroutine
+		for _, filename := range filenames {
+
+			fmt.Printf("Processing %s\n", filename)
+
+			script, err := os.ReadFile(filename)
+
+			if err != nil {
+				fmt.Println("Error:", err)
+				return
+			}
+
+			outputFileName := generateOutputFilename(filename, formatter.suffix)
+
+			dataInputChannel <- FileData{Filename: filename, OutputFilename: outputFileName, Data: script}
+		}
+	}()
+
+	// Wait for all workers to finish
+	go func() {
+		wg.Wait()
+		close(dataOutputChannel) // Close the results channel after all workers finish
+	}()
 
 	if *dryRun {
-		go func() {
-			defer wg.Done()
-			for fileData := range fileDataChannel {
-				fmt.Println(string(fileData.Filename))
-			}
-		}()
+		for fileData := range dataOutputChannel {
+			fmt.Println(string(fileData.Filename))
+		}
 	} else {
-		go func() {
-			defer wg.Done()
-			for fileData := range fileDataChannel {
-				if err := os.WriteFile(fileData.Filename, fileData.Data, 0644); err != nil {
-					fmt.Println("Error:", err)
-					return
-				}
+		for fileData := range dataOutputChannel {
+			if err := os.WriteFile(fileData.OutputFilename, fileData.Data, 0644); err != nil {
+				fmt.Println("Error:", err)
+				return
 			}
-		}()
+		}
 	}
-
-	pooledProcessor.Wait()
-
-	close(fileDataChannel)
-
-	wg.Wait()
+	fmt.Println("All jobs are done")
 }

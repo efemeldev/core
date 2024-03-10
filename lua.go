@@ -110,8 +110,8 @@ type LuaStateManager struct {
 	addedPathMutex sync.Mutex
 }
 
-func NewLuaStateManager(state *lua.LState) *LuaStateManager {
-	return &LuaStateManager{state: state, addedPaths: make(map[string]bool), addedPathMutex: sync.Mutex{}}
+func NewLuaStateManager() *LuaStateManager {
+	return &LuaStateManager{state: lua.NewState(), addedPaths: make(map[string]bool), addedPathMutex: sync.Mutex{}}
 }
 
 func (l *LuaStateManager) AddGlobalFunction(name string, function func(L *lua.LState) int) {
@@ -154,56 +154,6 @@ func (l *LuaStateManager) SetGlobalTable(name string, table *lua.LTable) {
 	l.state.SetGlobal(name, table)
 }
 
-type LuaStateBuilder func(state *lua.LState) (*lua.LState, error)
-
-// LuaStatePool represents a pool of Lua states
-type LuaStateManagerPool struct {
-	pool *sync.Pool
-	size int
-}
-
-func NewLuaStateManagerPool(initialSize int, stateManagerSetup func(state *LuaStateManager) (*LuaStateManager, error)) *LuaStateManagerPool {
-	pool := sync.Pool{}
-	// Initialize the pool with initialSize Lua states
-	for i := 0; i < initialSize; i++ {
-		luaStateManager := NewLuaStateManager(lua.NewState())
-		state, err := stateManagerSetup(luaStateManager)
-
-		if err != nil {
-			panic(err)
-		}
-
-		pool.Put(state)
-
-		fmt.Printf("Initialized Lua state %d\n", i+1)
-	}
-	return &LuaStateManagerPool{pool: &pool, size: initialSize}
-}
-
-// Get retrieves a Lua state from the pool
-func (p *LuaStateManagerPool) Get() *LuaStateManager {
-	if state, ok := p.pool.Get().(*LuaStateManager); ok {
-		return state
-	}
-	return nil
-}
-
-// Put returns a Lua state to the pool
-func (p *LuaStateManagerPool) Put(L *LuaStateManager) {
-	L.state.SetTop(0) // Reset stack
-	p.pool.Put(L)
-}
-
-// Close closes all Lua states in the pool
-func (p *LuaStateManagerPool) Close() {
-	// Close all Lua states in the pool
-	for i := 0; i < p.size; i++ {
-		if stateManager := p.Get(); stateManager != nil {
-			stateManager.state.Close()
-			fmt.Printf("Closed Lua state %d\n", i)
-			i++
-		} else {
-			break
-		}
-	}
+func (l *LuaStateManager) Close() {
+	l.state.Close()
 }
