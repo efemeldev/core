@@ -184,8 +184,8 @@ func main() {
 
 	// Create a pool of workers
 	var wg sync.WaitGroup
+	wg.Add(*workerCount)
 	for i := 1; i <= *workerCount; i++ {
-		wg.Add(1)
 		go worker(i, dataInputChannel, dataOutputChannel, &wg)
 	}
 
