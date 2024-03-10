@@ -9,36 +9,6 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
-// // set global table from script
-// func SetGlobalTableFromFile(state *lua.LState, name string, file string) error {
-
-// 	// get folder of the file
-// 	SetCWD(state, filepath.Dir(file))
-
-// 	script, err := os.ReadFile(file)
-
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	if err := state.DoString(string(script)); err != nil {
-// 		return err
-// 	}
-
-// 	returnedValue := state.Get(-1)
-
-// 	// Get the arguments from Lua
-// 	dataTable, ok := returnedValue.(*lua.LTable)
-
-// 	if !ok {
-// 		return fmt.Errorf("expected a table, got %T", returnedValue)
-// 	}
-
-// 	state.SetGlobal(name, dataTable)
-// 	return nil
-
-// }
-
 // run script
 func RunScriptRaw(lua *lua.LState, script string) (lua.LValue, error) {
 	if err := lua.DoString(script); err != nil {
