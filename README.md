@@ -50,8 +50,9 @@ go build -ldflags="-s -w" -o efemel
 - [x] Concurrency controls
 - [x] File reader/writer package that can write to filesystem or keep everything in memory (for testing)
 - [x] Specify output file path
-- [ ] Module loader package that either loads local files or assets
+- [ ] Move file reading and writing outside of run function
 - [ ] Add better logging
+- [ ] Module loader package that either loads local files or assets
 - [ ] Standardise output module injection
 - [ ] Organise project structure
 - [ ] Add tests

@@ -4,28 +4,10 @@ import (
 	fileprocessors "efemel/services/fileprocessors"
 	"flag"
 	"fmt"
-	"path/filepath"
-	"strings"
 	"sync"
 
 	lua "github.com/yuin/gopher-lua"
 )
-
-// Define a Go function that you want to expose to Lua
-func add(a, b int) int {
-	return a + b
-}
-
-func generateOutputFilename(path, filename, suffix string) string {
-	// Extract the input Lua file name without extension
-	newFileName := strings.TrimSuffix(filename, filepath.Ext(filename)) + "." + suffix
-
-	// Merge path and filename
-	fullFilename := filepath.Join(path, newFileName)
-
-	// Define the output YAML file name
-	return fullFilename
-}
 
 type FileData struct {
 	Filename       string
@@ -45,6 +27,11 @@ type InitialiseLuaStateInput struct {
 	luaModules []string
 	varsScript string
 	varsPath   string
+}
+
+// Define a Go function that you want to expose to Lua
+func add(a, b int) int {
+	return a + b
 }
 
 func initialiseLuaState(input InitialiseLuaStateInput) *LuaStateManager {
@@ -70,7 +57,6 @@ func initialiseLuaState(input InitialiseLuaStateInput) *LuaStateManager {
 
 	// load vars file as a global table
 	if input.varsScript != "" {
-
 		luaStateManager.AddPath(input.varsPath)
 
 		value, err := RunScript(luaStateManager.state, input.varsScript, GetReturnedLuaTable)
@@ -85,40 +71,26 @@ func initialiseLuaState(input InitialiseLuaStateInput) *LuaStateManager {
 	return luaStateManager
 }
 
-func main() {
+type RunInput struct {
+	fileProcessor fileprocessors.FileProcessor
+	formatter     Formatter
+	luaModules    []string
+	varsScript    string
+	varsPath      string
+	filenames	 []string
+	inputChannelBufferSize int
+	outputChannelBufferSize int
+	workerCount int
+	writerCount int
+	outputFilePath string
+	dryRun bool
+}
 
-	// Define command-line flags
-	outputFormat := flag.String("format", "", "Output format")
-	outputFileExtension := flag.String("suffix", "", "Output file extension")
-	dryRun := flag.Bool("dryrun", false, "Dry run")
-	varsFile := flag.String("vars", "", "File with vars to be used in the script")
-	workerCount := flag.Int("workers", 2, "Number of workers")
-	writerCount := flag.Int("writers", 1, "Number of writers")
-	inputChannelBufferSize := flag.Int("input-buffer", 10, "Input channel buffer size")
-	outputChannelBufferSize := flag.Int("output-buffer", 10, "Output channel buffer size")
-	outputFilePath := flag.String("output-path", "./", "Output path")
-	flag.Parse()
-
-	// Check if output file is provided
-	if flag.NArg() < 1 {
-		fmt.Println("Usage: go run . -output <yaml|json> <efemel script glob>")
-		return
-	}
-
-	fileProcessor := fileprocessors.NewLocalFileProcessor()
-
-	filenames := handleError(fileProcessor.FindFiles(flag.Args()))
-
-	formatter := handleError(getFormatter(*outputFormat, *outputFileExtension))
-
-	luaModules := handleError(findAllLuaAssetModules("lua/"))
-
-	varsScript := handleError(fileProcessor.ReadFile(*varsFile))
-
+func run(input RunInput) {
 	initLuaStateInput := InitialiseLuaStateInput{
-		luaModules: luaModules,
-		varsScript: string(varsScript),
-		varsPath:   fileProcessor.GetPathToFile(*varsFile),
+		luaModules: input.luaModules,
+		varsScript: input.varsScript,
+		varsPath:   input.varsPath,
 	}
 
 	// Initialize Lua workers
@@ -150,14 +122,14 @@ func main() {
 		luaStateManager.Close()
 	}
 
-	dataInputChannel := make(chan FileData, *inputChannelBufferSize)
-	dataOutputChannel := make(chan OutputFileData, *outputChannelBufferSize)
+	dataInputChannel := make(chan FileData, input.inputChannelBufferSize)
+	dataOutputChannel := make(chan OutputFileData, input.outputChannelBufferSize)
 
 	// Create a pool of workers
 	var wg sync.WaitGroup
-	wg.Add(*workerCount)
+	wg.Add(input.workerCount)
 
-	for i := 1; i <= *workerCount; i++ {
+	for i := 1; i <= input.workerCount; i++ {
 		go worker(i, dataInputChannel, dataOutputChannel, &wg)
 	}
 
@@ -166,22 +138,22 @@ func main() {
 		defer close(dataInputChannel)
 
 		// loop through the filenames and process each one in a separate goroutine
-		for _, filename := range filenames {
+		for _, filename := range input.filenames {
 
 			fmt.Printf("Processing %s\n", filename)
 
-			script, err := fileProcessor.ReadFile(filename)
+			script, err := input.fileProcessor.ReadFile(filename)
 
 			if err != nil {
 				fmt.Println("Error:", err)
 				return
 			}
 
-			outputFileName := generateOutputFilename(*outputFilePath, filename, formatter.suffix)
+			outputFileName := generateOutputFilename(input.outputFilePath, filename, input.formatter.suffix)
 
 			dataInputChannel <- FileData{
 				Filename:       filename,
-				FilePath:       fileProcessor.GetPathToFile(filename),
+				FilePath:       input.fileProcessor.GetPathToFile(filename),
 				OutputFilename: outputFileName,
 				Data:           script,
 			}
@@ -193,41 +165,82 @@ func main() {
 		wg.Wait()
 		close(dataOutputChannel) // Close the results channel after all workers finish
 	}()
+	
 
-	(func() {
-		if *dryRun {
+	if input.dryRun {
+		for fileData := range dataOutputChannel {
+			fmt.Println(string(fileData.Filename))
+		}
+		return
+	}
+
+	// Write files
+	writeWaitGroup := sync.WaitGroup{}
+	writeWaitGroup.Add(input.writerCount)
+
+	for i := 0; i < input.writerCount; i++ {
+		go func() {
+			defer writeWaitGroup.Done()
 			for fileData := range dataOutputChannel {
-				fmt.Println(string(fileData.Filename))
-			}
-			return
-		}
+				formattedData, err := input.formatter.Marshal(fileData.Data)
 
-		// Write files
-		writeWaitGroup := sync.WaitGroup{}
-		writeWaitGroup.Add(*writerCount)
-
-		for i := 0; i < *writerCount; i++ {
-			go func() {
-				defer writeWaitGroup.Done()
-				for fileData := range dataOutputChannel {
-					formattedData, err := formatter.Marshal(fileData.Data)
-
-					if err != nil {
-						panic(err)
-					}
-
-					fmt.Println("Writing", fileData.OutputFilename)
-
-					if err := fileProcessor.WriteFile(fileData.OutputFilename, formattedData); err != nil {
-						panic(err)
-					}
+				if err != nil {
+					panic(err)
 				}
-			}()
-		}
 
-		writeWaitGroup.Wait()
+				fmt.Println("Writing", fileData.OutputFilename)
 
-	})()
+				if err :=  input.fileProcessor.WriteFile(fileData.OutputFilename, formattedData); err != nil {
+					panic(err)
+				}
+			}
+		}()
+	}
+
+	writeWaitGroup.Wait()
+}
+
+func main() {
+
+	// Define command-line flags
+	outputFormat := flag.String("format", "", "Output format")
+	outputFileExtension := flag.String("suffix", "", "Output file extension")
+	dryRun := flag.Bool("dryrun", false, "Dry run")
+	varsFile := flag.String("vars", "", "File with vars to be used in the script")
+	workerCount := flag.Int("workers", 2, "Number of workers")
+	writerCount := flag.Int("writers", 1, "Number of writers")
+	inputChannelBufferSize := flag.Int("input-buffer", 10, "Input channel buffer size")
+	outputChannelBufferSize := flag.Int("output-buffer", 10, "Output channel buffer size")
+	outputFilePath := flag.String("output-path", "./", "Output path")
+	flag.Parse()
+
+	// Check if output file is provided
+	if flag.NArg() < 1 {
+		fmt.Println("Usage: go run . -output <yaml|json> <efemel script glob>")
+		return
+	}
+
+	fileProcessor := fileprocessors.NewLocalFileProcessor()
+	filenames := handleError(fileProcessor.FindFiles(flag.Args()))
+	formatter := handleError(getFormatter(*outputFormat, *outputFileExtension))
+	luaModules := handleError(findAllLuaAssetModules("lua/"))
+	varsScript := string(handleError(fileProcessor.ReadFile(*varsFile)))
+	varsPath := fileProcessor.GetPathToFile(*varsFile)
+
+	run(RunInput{
+		fileProcessor: fileProcessor,
+		formatter:     *formatter,
+		luaModules:    luaModules,
+		varsScript:    varsScript,
+		varsPath:      varsPath,
+		filenames:     filenames,
+		inputChannelBufferSize: *inputChannelBufferSize,
+		outputChannelBufferSize: *outputChannelBufferSize,
+		workerCount: *workerCount,
+		writerCount: *writerCount,
+		outputFilePath: *outputFilePath,
+		dryRun: *dryRun,
+	})
 
 	fmt.Println("All jobs are done")
 }

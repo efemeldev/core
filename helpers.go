@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"path/filepath"
+	"strings"
 	"syscall"
 )
 
@@ -21,4 +23,15 @@ func handleError[T interface{}](data T, err error) T {
 	}
 
 	return data
+}
+
+func generateOutputFilename(path, filename, suffix string) string {
+	// Extract the input Lua file name without extension
+	newFileName := strings.TrimSuffix(filename, filepath.Ext(filename)) + "." + suffix
+
+	// Merge path and filename
+	fullFilename := filepath.Join(path, newFileName)
+
+	// Define the output YAML file name
+	return fullFilename
 }
