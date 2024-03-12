@@ -1,6 +1,7 @@
 package main
 
 import (
+	fileprocessors "efemel/services/fileprocessors"
 	"flag"
 	"fmt"
 	"os"
@@ -185,9 +186,13 @@ func main() {
 	// Create a pool of workers
 	var wg sync.WaitGroup
 	wg.Add(*workerCount)
+
 	for i := 1; i <= *workerCount; i++ {
 		go worker(i, dataInputChannel, dataOutputChannel, &wg)
 	}
+
+	fileProcessor := fileprocessors.NewLocalFileProcessor()
+
 
 	// Producer goroutine to send jobs
 	go func() {
@@ -198,7 +203,7 @@ func main() {
 
 			fmt.Printf("Processing %s\n", filename)
 
-			script, err := os.ReadFile(filename)
+			script, err := fileProcessor.ReadFile(filename)
 
 			if err != nil {
 				fmt.Println("Error:", err)
@@ -217,12 +222,15 @@ func main() {
 		close(dataOutputChannel) // Close the results channel after all workers finish
 	}()
 
-	if *dryRun {
-		for fileData := range dataOutputChannel {
-			fmt.Println(string(fileData.Filename))
+	(func(){
+		if *dryRun {
+			for fileData := range dataOutputChannel {
+				fmt.Println(string(fileData.Filename))
+			}
+			return
 		}
-	} else {
 
+		// Write files
 		writeWaitGroup := sync.WaitGroup{}
 
 		writeWaitGroup.Add(*writerCount)
@@ -233,7 +241,7 @@ func main() {
 				defer writeWaitGroup.Done()
 
 				for fileData := range dataOutputChannel {
-					if err := os.WriteFile(fileData.OutputFilename, fileData.Data, 0644); err != nil {
+					if err := fileProcessor.WriteFile(fileData.OutputFilename, fileData.Data); err != nil {
 						panic(err)
 					}
 				}
@@ -241,6 +249,8 @@ func main() {
 		}
 
 		writeWaitGroup.Wait()
-	}
+
+	})()
+
 	fmt.Println("All jobs are done")
 }

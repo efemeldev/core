@@ -48,17 +48,17 @@ go build -ldflags="-s -w" -o efemel
 - [x] Use a builder pattern to add formatters, custom modules, lua functions, etc
 - [x] Implement dry run
 - [x] Concurrency controls
-- [ ] Implement statistics capture
 - [ ] File reader/writer package that can write to filesystem or keep everything in memory (for testing)
+- [ ] Module loader package that either loads local files or assets
+- [ ] Add better logging
+- [ ] Standardise output module injection
+- [ ] Organise project structure
+- [ ] Add tests
+- [ ] Figure out signing mac binaries
+- [ ] Implement statistics capture
 - [ ] Implement post processing function that can be used to modify the output before it is written to a file
 - [ ] Implement concat strings function for Lua
 - [ ] Implement merge tables function for Lua
-- [ ] Module loader package that either loads local files or assets
-- [ ] Add better logging
-- [ ] Add tests
-- [ ] Standardise output module injection
-- [ ] Organise project structure
-- [ ] Figure out signing mac binaries
 - [ ] Add CI/CD
 - [ ] Add documentation
 - [ ] Add examples

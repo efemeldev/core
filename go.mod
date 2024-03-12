@@ -1,4 +1,4 @@
-module ringoldsdev/workflows
+module efemel
 
 go 1.20
 
