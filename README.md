@@ -48,7 +48,8 @@ go build -ldflags="-s -w" -o efemel
 - [x] Use a builder pattern to add formatters, custom modules, lua functions, etc
 - [x] Implement dry run
 - [x] Concurrency controls
-- [ ] File reader/writer package that can write to filesystem or keep everything in memory (for testing)
+- [x] File reader/writer package that can write to filesystem or keep everything in memory (for testing)
+- [x] Specify output file path
 - [ ] Module loader package that either loads local files or assets
 - [ ] Add better logging
 - [ ] Standardise output module injection

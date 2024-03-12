@@ -45,3 +45,8 @@ func (m *MemoryFileProcessor) WriteFile(filePath string, data []byte) error {
     m.data[filePath] = data
     return nil
 }
+
+// get path to file
+func (m *MemoryFileProcessor) GetPathToFile(filename string) string {
+    return filepath.Dir(filename)
+}

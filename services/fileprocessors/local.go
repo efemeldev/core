@@ -1,6 +1,7 @@
 package fileprocessors
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -39,11 +40,31 @@ func (l *LocalFileProcessor) FindFiles(globs []string) ([]string, error) {
 }
 
 // WriteFile writes data to a file in local storage.
-func (l *LocalFileProcessor) WriteFile(filePath string, data []byte) error {
+func (l *LocalFileProcessor) WriteFile(filename string, data []byte) error {
+    
+    filePath := l.GetPathToFile(filename)
+
+    // check if the directory exists
+    if _, err := os.Stat(filePath); os.IsNotExist(err) {
+        // create the directory
+
+        fmt.Printf("Creating directory: %s\n", filePath)
+
+        err := os.MkdirAll(filePath, 0755)
+        if err != nil {
+            return err
+        }
+    }
+
     // Write the data to a file in local storage
-    err := os.WriteFile(filePath, data, 0644)
+    err := os.WriteFile(filename, data, 0644)
     if err != nil {
         return err
     }
     return nil
+}
+
+// get path to file
+func (l *LocalFileProcessor) GetPathToFile(filename string) string {
+    return filepath.Dir(filename)
 }

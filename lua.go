@@ -127,3 +127,59 @@ func (l *LuaStateManager) SetGlobalTable(name string, table *lua.LTable) {
 func (l *LuaStateManager) Close() {
 	l.state.Close()
 }
+
+func findAllLuaAssetModules(prefix string) ([]string, error) {
+	var result []string
+	for _, name := range AssetNames() {
+		if strings.HasPrefix(name, prefix) && strings.HasSuffix(name, ".lua") {
+			result = append(result, name)
+		}
+	}
+	return result, nil
+}
+
+func loadLuaAssetModule(module string) (string, error) {
+	content, err := Asset(module)
+	if err != nil {
+		return "", err
+	}
+
+	return string(content), nil
+}
+
+// Function to recursively convert Lua table to Go map
+func luaValueToInterface(value lua.LValue) interface{} {
+	switch value.Type() {
+	case lua.LTBool:
+		return bool(value.(lua.LBool))
+	case lua.LTNumber:
+		return float64(value.(lua.LNumber))
+	case lua.LTString:
+		return string(value.(lua.LString))
+	case lua.LTTable:
+		return luaTableToMap(value.(*lua.LTable))
+	default:
+		return nil
+	}
+}
+
+func luaTableToMap(table *lua.LTable) interface{} {
+	if table.MaxN() > 0 {
+		// If the table has sequential integer keys starting from 1, treat it as an array
+		arr := make([]interface{}, table.MaxN())
+		table.ForEach(func(i lua.LValue, value lua.LValue) {
+			idx := int(i.(lua.LNumber))
+			arr[idx-1] = luaValueToInterface(value)
+		})
+		return arr
+	}
+
+	// If not, treat it as a map
+	result := make(map[string]interface{})
+
+	table.ForEach(func(key, value lua.LValue) {
+		result[key.String()] = luaValueToInterface(value)
+	})
+
+	return result
+}
