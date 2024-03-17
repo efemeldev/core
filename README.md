@@ -50,6 +50,7 @@ go build -ldflags="-s -w" -o efemel
 - [x] Concurrency controls
 - [x] File reader/writer package that can write to filesystem or keep everything in memory (for testing)
 - [x] Specify output file path
+- [x] Deprecate built in lua modules
 - [x] Initialise global variables outside of the state manager
 - [ ] Move file reading and writing outside of run function
 - [ ] Add better logging
