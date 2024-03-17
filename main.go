@@ -23,60 +23,25 @@ type OutputFileData struct {
 	Data           interface{}
 }
 
-type InitialiseLuaStateInput struct {
-	luaModules []string
-	varsScript string
-	varsPath   string
-}
-
 // Define a Go function that you want to expose to Lua
 func add(a, b int) int {
 	return a + b
 }
 
-func initialiseLuaState(input InitialiseLuaStateInput) *LuaStateManager {
-	luaStateManager := NewLuaStateManager()
+func luaAdd(L *lua.LState) int {
+	a := L.ToInt(1)
+	b := L.ToInt(2)
 
-	for _, module := range input.luaModules {
-		loadedModule := handleError(loadLuaAssetModule(module))
+	result := add(a, b)
 
-		if err := luaStateManager.LoadCustomLuaModule(loadedModule); err != nil {
-			panic(err)
-		}
-	}
-
-	luaStateManager.AddGlobalFunction("testAdd", func(L *lua.LState) int {
-		a := L.ToInt(1)
-		b := L.ToInt(2)
-
-		result := add(a, b)
-
-		L.Push(lua.LNumber(result))
-		return 1
-	})
-
-	// load vars file as a global table
-	if input.varsScript != "" {
-		luaStateManager.AddPath(input.varsPath)
-
-		value, err := RunScript(luaStateManager.state, input.varsScript, GetReturnedLuaTable)
-
-		if err != nil {
-			panic(err)
-		}
-
-		luaStateManager.SetGlobalTable("vars", value)
-	}
-
-	return luaStateManager
+	L.Push(lua.LNumber(result))
+	return 1
 }
 
 type RunInput struct {
 	fileProcessor fileprocessors.FileProcessor
 	formatter     Formatter
-	luaModules    []string
-	varsScript    string
-	varsPath      string
+	luaStateManagerBuilder func() *LuaStateManager
 	filenames	 []string
 	inputChannelBufferSize int
 	outputChannelBufferSize int
@@ -87,16 +52,10 @@ type RunInput struct {
 }
 
 func run(input RunInput) {
-	initLuaStateInput := InitialiseLuaStateInput{
-		luaModules: input.luaModules,
-		varsScript: input.varsScript,
-		varsPath:   input.varsPath,
-	}
-
 	// Initialize Lua workers
 	worker := func(id int, jobs <-chan FileData, results chan<- OutputFileData, wg *sync.WaitGroup) {
-
-		luaStateManager := initialiseLuaState(initLuaStateInput)
+		// workers can't share the same Lua state, so we need to create a new one for each worker
+		luaStateManager := input.luaStateManagerBuilder()
 
 		defer wg.Done()
 
@@ -200,6 +159,25 @@ func run(input RunInput) {
 	writeWaitGroup.Wait()
 }
 
+func loadGlobalVars(fileProcessor fileprocessors.FileProcessor, varsFile string) (lua.LTable, error) {
+
+	varsScript := string(handleError(fileProcessor.ReadFile(varsFile)))
+	varsPath := fileProcessor.GetPathToFile(varsFile)
+
+	luaStateManager := NewLuaStateManager()
+	defer luaStateManager.Close()
+
+	luaStateManager.AddPath(varsPath)
+
+	value, err := RunScript(luaStateManager.state, varsScript, GetReturnedLuaTable)
+
+	if err != nil {
+		return null[lua.LTable](), err
+	}
+
+	return *value, nil
+}
+
 func main() {
 
 	// Define command-line flags
@@ -223,16 +201,36 @@ func main() {
 	fileProcessor := fileprocessors.NewLocalFileProcessor()
 	filenames := handleError(fileProcessor.FindFiles(flag.Args()))
 	formatter := handleError(getFormatter(*outputFormat, *outputFileExtension))
-	luaModules := handleError(findAllLuaAssetModules("lua/"))
-	varsScript := string(handleError(fileProcessor.ReadFile(*varsFile)))
-	varsPath := fileProcessor.GetPathToFile(*varsFile)
+
+	globalVars, err := loadGlobalVars(fileProcessor, *varsFile)
+
+	if err != nil {
+		panic(err)
+	}
+
+	luaStateManagerBuilder := func () *LuaStateManager {
+		luaStateManager := NewLuaStateManager()
+
+		luaStateManager.AddGlobalFunction("testAdd", luaAdd)
+
+		if varsFile != nil {
+			// validate that Lua state doesn't have a global variable with the same name
+			// custom modules could accidentally overwrite the global variable
+			existingGlobalVars := luaStateManager.state.GetGlobal("vars")
+
+			if existingGlobalVars != lua.LNil {
+				panic("Global variable 'vars' already exists in the Lua state")
+			}
+
+			luaStateManager.SetGlobalTable("vars", &globalVars)
+		}
+		return luaStateManager
+	}
 
 	run(RunInput{
 		fileProcessor: fileProcessor,
 		formatter:     *formatter,
-		luaModules:    luaModules,
-		varsScript:    varsScript,
-		varsPath:      varsPath,
+		luaStateManagerBuilder: luaStateManagerBuilder,
 		filenames:     filenames,
 		inputChannelBufferSize: *inputChannelBufferSize,
 		outputChannelBufferSize: *outputChannelBufferSize,

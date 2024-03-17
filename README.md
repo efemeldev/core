@@ -50,8 +50,10 @@ go build -ldflags="-s -w" -o efemel
 - [x] Concurrency controls
 - [x] File reader/writer package that can write to filesystem or keep everything in memory (for testing)
 - [x] Specify output file path
+- [x] Initialise global variables outside of the state manager
 - [ ] Move file reading and writing outside of run function
 - [ ] Add better logging
+- [ ] Load config from a file (should support the same lua config files)
 - [ ] Module loader package that either loads local files or assets
 - [ ] Standardise output module injection
 - [ ] Organise project structure
@@ -64,6 +66,8 @@ go build -ldflags="-s -w" -o efemel
 - [ ] Add CI/CD
 - [ ] Add documentation
 - [ ] Add examples
+- [ ] Convert yml/json to lua ?
+- [ ] ProductHunt
 
 ## Multiple input files
 

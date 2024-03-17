@@ -88,11 +88,6 @@ func (l *LuaStateManager) AddGlobalFunction(name string, function func(L *lua.LS
 	l.state.SetGlobal(name, l.state.NewFunction(function))
 }
 
-func (l *LuaStateManager) LoadCustomLuaModule(module string) error {
-	err := l.state.DoString(module)
-	return err // nil or error
-}
-
 func (l *LuaStateManager) AddPath(path string) error {
 	l.addedPathMutex.Lock()
 	defer l.addedPathMutex.Unlock()
@@ -128,25 +123,6 @@ func (l *LuaStateManager) Close() {
 	l.state.Close()
 }
 
-func findAllLuaAssetModules(prefix string) ([]string, error) {
-	var result []string
-	for _, name := range AssetNames() {
-		if strings.HasPrefix(name, prefix) && strings.HasSuffix(name, ".lua") {
-			result = append(result, name)
-		}
-	}
-	return result, nil
-}
-
-func loadLuaAssetModule(module string) (string, error) {
-	content, err := Asset(module)
-	if err != nil {
-		return "", err
-	}
-
-	return string(content), nil
-}
-
 // Function to recursively convert Lua table to Go map
 func luaValueToInterface(value lua.LValue) interface{} {
 	switch value.Type() {
@@ -163,6 +139,7 @@ func luaValueToInterface(value lua.LValue) interface{} {
 	}
 }
 
+// convert Lua table to Go interface
 func luaTableToMap(table *lua.LTable) interface{} {
 	if table.MaxN() > 0 {
 		// If the table has sequential integer keys starting from 1, treat it as an array
