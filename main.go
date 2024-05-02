@@ -10,17 +10,21 @@ import (
 )
 
 type FileData struct {
-	Filename       string
-	FilePath       string
-	OutputFilename string
-	Data           []byte
+	Filename         string
+	FilePath         string
+	OutputFilePath   string
+	OutputFilename   string
+	OutputFileSuffix string
+	Data             []byte
 }
 
 type OutputFileData struct {
-	Filename       string
-	FilePath       string
-	OutputFilename string
-	Data           interface{}
+	Filename         string
+	FilePath         string
+	OutputFilePath   string
+	OutputFilename   string
+	OutputFileSuffix string
+	Data             interface{}
 }
 
 // Define a Go function that you want to expose to Lua
@@ -39,16 +43,16 @@ func luaAdd(L *lua.LState) int {
 }
 
 type RunInput struct {
-	fileProcessor fileprocessors.FileProcessor
-	formatter     Formatter
-	luaStateManagerBuilder func() *LuaStateManager
-	filenames	 []string
-	inputChannelBufferSize int
+	fileProcessor           fileprocessors.FileProcessor
+	formatter               Formatter
+	luaStateManagerBuilder  func() *LuaStateManager
+	filenames               []string
+	inputChannelBufferSize  int
 	outputChannelBufferSize int
-	workerCount int
-	writerCount int
-	outputFilePath string
-	dryRun bool
+	workerCount             int
+	writerCount             int
+	outputFilePath          string
+	dryRun                  bool
 }
 
 func run(input RunInput) {
@@ -69,11 +73,15 @@ func run(input RunInput) {
 				panic(err)
 			}
 
+			// TODO: add hooks for post-processing the data
+
 			results <- OutputFileData{
-				Filename:       job.Filename,
-				FilePath:       job.FilePath,
-				OutputFilename: job.OutputFilename,
-				Data:           res,
+				Filename:         job.Filename,
+				FilePath:         job.FilePath,
+				OutputFilePath:   job.OutputFilePath,
+				OutputFilename:   job.OutputFilename,
+				OutputFileSuffix: job.OutputFileSuffix,
+				Data:             res,
 			}
 		}
 
@@ -108,13 +116,13 @@ func run(input RunInput) {
 				return
 			}
 
-			outputFileName := generateOutputFilename(input.outputFilePath, filename, input.formatter.suffix)
-
 			dataInputChannel <- FileData{
-				Filename:       filename,
-				FilePath:       input.fileProcessor.GetPathToFile(filename),
-				OutputFilename: outputFileName,
-				Data:           script,
+				Filename:         filename,
+				FilePath:         input.fileProcessor.GetPathToFile(filename),
+				OutputFilePath:   extractOutputFilePath(input.outputFilePath, filename),
+				OutputFilename:   extractFilename(filename),
+				OutputFileSuffix: input.formatter.suffix,
+				Data:             script,
 			}
 		}
 	}()
@@ -124,7 +132,6 @@ func run(input RunInput) {
 		wg.Wait()
 		close(dataOutputChannel) // Close the results channel after all workers finish
 	}()
-	
 
 	if input.dryRun {
 		for fileData := range dataOutputChannel {
@@ -141,15 +148,20 @@ func run(input RunInput) {
 		go func() {
 			defer writeWaitGroup.Done()
 			for fileData := range dataOutputChannel {
+
+				// TODO: implement writing multiple files from a single data output if the data is a map
+
+				fileName := generateOutputFilename(fileData.OutputFilePath, fileData.Filename, fileData.OutputFileSuffix)
+
 				formattedData, err := input.formatter.Marshal(fileData.Data)
 
 				if err != nil {
 					panic(err)
 				}
 
-				fmt.Println("Writing", fileData.OutputFilename)
+				fmt.Println("Writing", fileName)
 
-				if err :=  input.fileProcessor.WriteFile(fileData.OutputFilename, formattedData); err != nil {
+				if err := input.fileProcessor.WriteFile(fileName, formattedData); err != nil {
 					panic(err)
 				}
 			}
@@ -183,8 +195,7 @@ func main() {
 	filenames := handleError(fileProcessor.FindFiles(flag.Args()))
 	formatter := handleError(getFormatter(*outputFormat, *outputFileExtension))
 
-
-	luaStateManagerBuilder := func () *LuaStateManager {
+	luaStateManagerBuilder := func() *LuaStateManager {
 		luaStateManager := NewLuaStateManager(NewLuaStateManagerInput{
 			override: *override,
 		})
@@ -195,16 +206,16 @@ func main() {
 	}
 
 	run(RunInput{
-		fileProcessor: fileProcessor,
-		formatter:     *formatter,
-		luaStateManagerBuilder: luaStateManagerBuilder,
-		filenames:     filenames,
-		inputChannelBufferSize: *inputChannelBufferSize,
+		fileProcessor:           fileProcessor,
+		formatter:               *formatter,
+		luaStateManagerBuilder:  luaStateManagerBuilder,
+		filenames:               filenames,
+		inputChannelBufferSize:  *inputChannelBufferSize,
 		outputChannelBufferSize: *outputChannelBufferSize,
-		workerCount: *workerCount,
-		writerCount: *writerCount,
-		outputFilePath: *outputFilePath,
-		dryRun: *dryRun,
+		workerCount:             *workerCount,
+		writerCount:             *writerCount,
+		outputFilePath:          *outputFilePath,
+		dryRun:                  *dryRun,
 	})
 
 	fmt.Println("All jobs are done")

@@ -1,10 +1,8 @@
-local data = require "./components/data"
-local vars = require "./vars/env"
-
 return {
-    result = {
-        test = testAdd(1,2),
+    [1] = {
+        message = "Hello"
     },
-    data = data,
-    environment = vars.environment
+    [2] = {
+        message = "World"
+    }
 }
