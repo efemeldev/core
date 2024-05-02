@@ -159,36 +159,13 @@ func run(input RunInput) {
 	writeWaitGroup.Wait()
 }
 
-func loadGlobalVars(fileProcessor fileprocessors.FileProcessor, varsFile string) (lua.LTable, error) {
-
-	if varsFile == "" {
-		return null[lua.LTable](), nil
-	}
-
-	varsScript := string(handleError(fileProcessor.ReadFile(varsFile)))
-	varsPath := fileProcessor.GetPathToFile(varsFile)
-
-	luaStateManager := NewLuaStateManager()
-	defer luaStateManager.Close()
-
-	luaStateManager.AddPath(varsPath)
-
-	value, err := RunScript(luaStateManager.state, varsScript, GetReturnedLuaTable)
-
-	if err != nil {
-		return null[lua.LTable](), err
-	}
-
-	return *value, nil
-}
-
 func main() {
 
 	// Define command-line flags
 	outputFormat := flag.String("format", "", "Output format")
+	override := flag.String("override", "", "Lua file override postfix")
 	outputFileExtension := flag.String("suffix", "", "Output file extension")
 	dryRun := flag.Bool("dryrun", false, "Dry run")
-	varsFile := flag.String("vars", "", "File with vars to be used in the script")
 	workerCount := flag.Int("workers", 2, "Number of workers")
 	writerCount := flag.Int("writers", 1, "Number of writers")
 	inputChannelBufferSize := flag.Int("input-buffer", 10, "Input channel buffer size")
@@ -207,28 +184,13 @@ func main() {
 	formatter := handleError(getFormatter(*outputFormat, *outputFileExtension))
 
 
-	globalVars, err := loadGlobalVars(fileProcessor, *varsFile)
-
-	if err != nil {
-		panic(err) 
-	}
-
 	luaStateManagerBuilder := func () *LuaStateManager {
-		luaStateManager := NewLuaStateManager()
+		luaStateManager := NewLuaStateManager(NewLuaStateManagerInput{
+			override: *override,
+		})
 
 		luaStateManager.AddGlobalFunction("testAdd", luaAdd)
 
-		if varsFile != nil {
-			// validate that Lua state doesn't have a global variable with the same name
-			// custom modules could accidentally overwrite the global variable
-			existingGlobalVars := luaStateManager.state.GetGlobal("vars")
-
-			if existingGlobalVars != lua.LNil {
-				panic("Global variable 'vars' already exists in the Lua state")
-			}
-
-			luaStateManager.SetGlobalTable("vars", &globalVars)
-		}
 		return luaStateManager
 	}
 

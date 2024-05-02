@@ -1,4 +1,5 @@
 local data = require "./components/data"
+local vars = require "./vars/env"
 
 return {
     result = {

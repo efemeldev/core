@@ -1,3 +1,4 @@
+local vars = require "./vars/env"
 local data = require "./components/data"
 
 return {
@@ -5,5 +6,6 @@ return {
         test = testAdd(1,2),
     },
     data = data,
-    environment = vars.environment
+    environment = vars.environment,
+    envTest = vars.test()
 }

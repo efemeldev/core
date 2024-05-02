@@ -80,8 +80,40 @@ type LuaStateManager struct {
 	addedPathMutex sync.Mutex
 }
 
-func NewLuaStateManager() *LuaStateManager {
-	return &LuaStateManager{state: lua.NewState(), addedPaths: make(map[string]bool), addedPathMutex: sync.Mutex{}}
+type NewLuaStateManagerInput struct {
+	override string
+}
+
+func NewLuaStateManager(input NewLuaStateManagerInput) *LuaStateManager {
+
+	state := lua.NewState()
+
+	if input.override != "" {
+		wrapperScript := `
+		local original_require = require
+		function require(moduleName)
+			local prodModuleName = moduleName .. "-prod"
+
+			if package.loaded[prodModuleName] then
+				return package.loaded[prodModuleName]
+			end
+			
+			local status, module = pcall(original_require, prodModuleName)
+			
+			if status then
+				return module
+			end
+			
+			return original_require(moduleName)
+		end
+		`
+		if err := state.DoString(wrapperScript); err != nil {
+			fmt.Println("Error:", err)
+			return nil
+		}
+	}
+
+	return &LuaStateManager{state: state, addedPaths: make(map[string]bool), addedPathMutex: sync.Mutex{}}
 }
 
 func (l *LuaStateManager) AddGlobalFunction(name string, function func(L *lua.LState) int) {

@@ -1,3 +1,3 @@
 return {
-    some = "datass"
+    some = "data"
 }
