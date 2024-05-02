@@ -1,6 +1,6 @@
 return {
     environment = "prod",
-    test = function ()
-        return "prod"
-    end
+    recursive = {
+        value2 = "prod-value2",
+    }
 }

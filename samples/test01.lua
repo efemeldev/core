@@ -7,5 +7,7 @@ return {
     },
     data = data,
     environment = vars.environment,
-    envTest = vars.test()
+    envTest = vars.test(),
+    value1 = vars.recursive.value1,
+    value2 = vars.recursive.value2,
 }

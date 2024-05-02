@@ -91,20 +91,39 @@ func NewLuaStateManager(input NewLuaStateManagerInput) *LuaStateManager {
 	if input.override != "" {
 		wrapperScript := `
 		local original_require = require
-		function require(moduleName)
-			local prodModuleName = moduleName .. "-prod"
 
-			if package.loaded[prodModuleName] then
-				return package.loaded[prodModuleName]
+		function mergeTables(t1, t2)
+			for k, v in pairs(t2) do
+				if type(v) == "table" and type(t1[k]) == "table" then
+					t1[k] = mergeTables(t1[k], v)
+				else
+					t1[k] = v
+				end
+			end
+			return t1
+		end
+
+		function require(moduleName)
+			local overrideModuleName = moduleName .. "-` + input.override + `"
+		
+			if package.loaded[overrideModuleName] then
+				return package.loaded[overrideModuleName]
 			end
 			
-			local status, module = pcall(original_require, prodModuleName)
+			local status, overrideModule = pcall(original_require, overrideModuleName)
 			
-			if status then
-				return module
+			originalModule = original_require(moduleName)
+		
+			if not status then
+				return originalModule
+			end
+		
+			if type(originalModule) == "table" and type(overrideModule) == "table" then
+				originalModule = mergeTables(originalModule, overrideModule)
+				return originalModule
 			end
 			
-			return original_require(moduleName)
+			return overrideModule
 		end
 		`
 		if err := state.DoString(wrapperScript); err != nil {
