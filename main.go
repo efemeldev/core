@@ -161,6 +161,10 @@ func run(input RunInput) {
 
 func loadGlobalVars(fileProcessor fileprocessors.FileProcessor, varsFile string) (lua.LTable, error) {
 
+	if varsFile == "" {
+		return null[lua.LTable](), nil
+	}
+
 	varsScript := string(handleError(fileProcessor.ReadFile(varsFile)))
 	varsPath := fileProcessor.GetPathToFile(varsFile)
 
@@ -189,7 +193,7 @@ func main() {
 	writerCount := flag.Int("writers", 1, "Number of writers")
 	inputChannelBufferSize := flag.Int("input-buffer", 10, "Input channel buffer size")
 	outputChannelBufferSize := flag.Int("output-buffer", 10, "Output channel buffer size")
-	outputFilePath := flag.String("output-path", "./", "Output path")
+	outputFilePath := flag.String("output-path", "./build", "Output path")
 	flag.Parse()
 
 	// Check if output file is provided
@@ -202,10 +206,11 @@ func main() {
 	filenames := handleError(fileProcessor.FindFiles(flag.Args()))
 	formatter := handleError(getFormatter(*outputFormat, *outputFileExtension))
 
+
 	globalVars, err := loadGlobalVars(fileProcessor, *varsFile)
 
 	if err != nil {
-		panic(err)
+		panic(err) 
 	}
 
 	luaStateManagerBuilder := func () *LuaStateManager {

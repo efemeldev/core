@@ -9,24 +9,22 @@ File extensions: `efemel` and `fmel`
 Generate a YAML file named `script.yaml` from the `samples/script.lua` file.
 
 ```bash
-go run . ./samples/script.lua
+go run . -format yaml samples/script.lua
 ```
 
 Generate a JSON file named `script.json` from the `samples/script.lua` file.
 
 ```bash
-go run . -output json ./samples/script.lua
+go run . -format json samples/script.lua
 ```
 
-## Adding assets
-
-To add assets to the project, run the following command:
+You can also specify a glob of input files.
 
 ```bash
-go-bindata -o assets.go -pkg main ./lua
+go run . -format yaml samples/*.lua
 ```
 
-Only then you will have access to the `lua` folder and its contents.
+It will generate a YAML file for each input file in the output folder.
 
 ## Building
 
