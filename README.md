@@ -51,9 +51,9 @@ go build -ldflags="-s -w" -o efemel
 - [x] Deprecate built in lua modules
 - [x] Initialise global variables outside of the state manager
 - [x] Refactor the var loading code by overwriting the require function for better DX
-- [ ] Implement stacking of required lua files and merging of the result
-- [ ] Load config from a file (should support the same lua config files)
+- [x] Implement stacking of required lua files and merging of the result
 - [ ] Implement hooks for output file generation
+- [ ] Load config from a file (should support the same lua config files)
 - [ ] Move file reading and writing outside of run function
 - [ ] Organise project structure
 - [ ] Add better logging
