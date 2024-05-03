@@ -1,11 +1,16 @@
 local data = require "./components/data"
 local vars = require "./vars/env"
 
+local function someTest()
+    return "some test value"
+end
+
 return function() 
     return function()
         return {
             result = data,
-            vars = vars
+            vars = vars,
+            fnVal = someTest
         }
     end
 end

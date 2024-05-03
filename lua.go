@@ -152,6 +152,26 @@ func GetReturnedLuaTable(value lua.LValue) (*lua.LTable, error) {
 	return dataTable, nil
 }
 
+// execute lua function if it is a function
+func RunReturnedLuaFunction(state *lua.LState, value lua.LValue) (lua.LValue, error) {
+	// Call the function and use its return value
+	err := state.CallByParam(lua.P{
+		Fn:      value,
+		NRet:    1,
+		Protect: true,
+	}, lua.LNil)
+
+	if err != nil {
+		return null[lua.LValue](), err
+	}
+
+	// Get the function's return value
+	value = state.Get(-1)
+	state.Pop(1)
+
+	return value, nil
+}
+
 // get returned table from script
 func GetReturnedMap(state *lua.LState, value lua.LValue) (interface{}, error) {
 
@@ -159,20 +179,11 @@ func GetReturnedMap(state *lua.LState, value lua.LValue) (interface{}, error) {
 
     // Check if the returned value is a function
     if value.Type() == lua.LTFunction {
-        // Call the function and use its return value
-        err := state.CallByParam(lua.P{
-            Fn:      value,
-            NRet:    1,
-            Protect: true,
-        }, lua.LNil)
+        value, err := RunReturnedLuaFunction(state, value)
 
-        if err != nil {
-            return null[interface{}](), err
-        }
-
-        // Get the function's return value
-        value = state.Get(-1)
-        state.Pop(1)
+		if err != nil {
+			return null[interface{}](), err
+		}
 
 		return GetReturnedMap(state, value)
     }
@@ -184,7 +195,7 @@ func GetReturnedMap(state *lua.LState, value lua.LValue) (interface{}, error) {
 		return nil, err
 	}
 
-	return luaTableToMap(dataTable), nil
+	return luaTableToMap(state, dataTable), nil
 }
 
 // get returned string from script
@@ -200,7 +211,7 @@ func GetReturnedString(value lua.LValue) (string, error) {
 }
 
 // Function to recursively convert Lua table to Go map
-func luaValueToInterface(value lua.LValue) interface{} {
+func luaValueToInterface(state *lua.LState, value lua.LValue) interface{} {
 	switch value.Type() {
 	case lua.LTBool:
 		return bool(value.(lua.LBool))
@@ -209,20 +220,28 @@ func luaValueToInterface(value lua.LValue) interface{} {
 	case lua.LTString:
 		return string(value.(lua.LString))
 	case lua.LTTable:
-		return luaTableToMap(value.(*lua.LTable))
+		return luaTableToMap(state, value.(*lua.LTable))
+	case lua.LTFunction:
+		newValue, error := RunReturnedLuaFunction(state, value)
+
+		if error != nil {
+			panic(error)
+		}
+
+		return newValue
 	default:
 		return nil
 	}
 }
 
 // convert Lua table to Go interface
-func luaTableToMap(table *lua.LTable) interface{} {
+func luaTableToMap(state *lua.LState, table *lua.LTable) interface{} {
 	if table.MaxN() > 0 {
 		// If the table has sequential integer keys starting from 1, treat it as an array
 		arr := make([]interface{}, table.MaxN())
 		table.ForEach(func(i lua.LValue, value lua.LValue) {
 			idx := int(i.(lua.LNumber))
-			arr[idx-1] = luaValueToInterface(value)
+			arr[idx-1] = luaValueToInterface(state, value)
 		})
 		return arr
 	}
@@ -231,7 +250,7 @@ func luaTableToMap(table *lua.LTable) interface{} {
 	result := make(map[string]interface{})
 
 	table.ForEach(func(key, value lua.LValue) {
-		result[key.String()] = luaValueToInterface(value)
+		result[key.String()] = luaValueToInterface(state, value)
 	})
 
 	return result
