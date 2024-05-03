@@ -5,4 +5,5 @@ type FileProcessor interface {
 	WriteFile(filePath string, data []byte) error
 	FindFiles(globs []string) ([]string, error)
 	GetPathToFile(filename string) string
+	Exists(filePath string) bool
 }

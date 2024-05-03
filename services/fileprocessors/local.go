@@ -68,3 +68,11 @@ func (l *LocalFileProcessor) WriteFile(filename string, data []byte) error {
 func (l *LocalFileProcessor) GetPathToFile(filename string) string {
     return filepath.Dir(filename)
 }
+
+// check if a file exists
+func (l *LocalFileProcessor) Exists(filePath string) bool {
+    if _, err := os.Stat(filePath); os.IsNotExist(err) {
+        return false
+    }
+    return true
+}

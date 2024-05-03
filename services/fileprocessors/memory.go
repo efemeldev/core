@@ -50,3 +50,9 @@ func (m *MemoryFileProcessor) WriteFile(filePath string, data []byte) error {
 func (m *MemoryFileProcessor) GetPathToFile(filename string) string {
     return filepath.Dir(filename)
 }
+
+// check if file exists in memory
+func (m *MemoryFileProcessor) Exists(filePath string) bool {
+    _, ok := m.data[filePath]
+    return ok
+}
