@@ -9,71 +9,6 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
-// run script
-func RunScriptRaw(lua *lua.LState, script string) (lua.LValue, error) {
-	if err := lua.DoString(script); err != nil {
-		return nil, err
-	}
-
-	returnedLuaValue := lua.Get(-1)
-
-	return returnedLuaValue, nil
-}
-
-// run script
-func RunScript[T any](lua *lua.LState, script string, processValue func(value lua.LValue) (T, error)) (T, error) {
-
-	returnedLuaValue, err := RunScriptRaw(lua, script)
-
-	if err != nil {
-		return null[T](), err
-	}
-
-	processedValue, err := processValue(returnedLuaValue)
-
-	if err != nil {
-		return null[T](), err
-	}
-
-	return processedValue, nil
-}
-
-// get returned table from script
-func GetReturnedLuaTable(value lua.LValue) (*lua.LTable, error) {
-	// Get the arguments from Lua
-	dataTable, ok := value.(*lua.LTable)
-
-	if !ok {
-		return nil, fmt.Errorf("expected a table, got %T", value)
-	}
-
-	return dataTable, nil
-}
-
-// get returned table from script
-func GetReturnedMap(value lua.LValue) (interface{}, error) {
-	// Get the arguments from Lua
-	dataTable, err := GetReturnedLuaTable(value)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return luaTableToMap(dataTable), nil
-}
-
-// get returned string from script
-func GetReturnedString(value lua.LValue) (string, error) {
-	// Get the arguments from Lua
-	dataString, ok := value.(lua.LString)
-
-	if !ok {
-		return "", fmt.Errorf("expected a string, got %T", value)
-	}
-
-	return string(dataString), nil
-}
-
 type LuaStateManager struct {
 	state          *lua.LState
 	addedPaths     map[string]bool
@@ -172,6 +107,96 @@ func (l *LuaStateManager) SetGlobalTable(name string, table *lua.LTable) {
 
 func (l *LuaStateManager) Close() {
 	l.state.Close()
+}
+
+// run script
+func RunScriptRaw(lua *lua.LState, script string) (lua.LValue, error) {
+	if err := lua.DoString(script); err != nil {
+		return nil, err
+	}
+
+	returnedLuaValue := lua.Get(-1)
+
+	return returnedLuaValue, nil
+}
+
+// run script
+func RunScript[T any](state *lua.LState, script string, processValue func(state *lua.LState, value lua.LValue) (T, error)) (T, error) {
+
+	returnedLuaValue, err := RunScriptRaw(state, script)
+
+	if err != nil {
+		return null[T](), err
+	}
+
+	processedValue, err := processValue(state, returnedLuaValue)
+
+	fmt.Println("processedValue:", processedValue)
+
+	if err != nil {
+		return null[T](), err
+	}
+
+	return processedValue, nil
+}
+
+// get returned table from script
+func GetReturnedLuaTable(value lua.LValue) (*lua.LTable, error) {
+	// Get the arguments from Lua
+	dataTable, ok := value.(*lua.LTable)
+
+	if !ok {
+		return nil, fmt.Errorf("expected a table, got %T", value)
+	}
+
+	return dataTable, nil
+}
+
+// get returned table from script
+func GetReturnedMap(state *lua.LState, value lua.LValue) (interface{}, error) {
+
+	fmt.Println("value type:", value.Type())
+
+    // Check if the returned value is a function
+    if value.Type() == lua.LTFunction {
+        // Call the function and use its return value
+        err := state.CallByParam(lua.P{
+            Fn:      value,
+            NRet:    1,
+            Protect: true,
+        }, lua.LNil)
+
+        if err != nil {
+            return null[interface{}](), err
+        }
+
+        // Get the function's return value
+        value = state.Get(-1)
+        state.Pop(1)
+
+		return GetReturnedMap(state, value)
+    }
+
+	// Get the arguments from Lua
+	dataTable, err := GetReturnedLuaTable(value)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return luaTableToMap(dataTable), nil
+}
+
+// get returned string from script
+func GetReturnedString(value lua.LValue) (string, error) {
+	// Get the arguments from Lua
+	dataString, ok := value.(lua.LString)
+
+	if !ok {
+		return "", fmt.Errorf("expected a string, got %T", value)
+	}
+
+	return string(dataString), nil
 }
 
 // Function to recursively convert Lua table to Go map
