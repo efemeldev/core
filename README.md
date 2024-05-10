@@ -53,9 +53,13 @@ go build -ldflags="-s -w" -o efemel
 - [x] Refactor the var loading code by overwriting the require function for better DX
 - [x] Implement stacking of required lua files and merging of the result
 - [x] Implement returned function execution before formatting
-- [ ] Implement hooks for output file generation
+- [x] Don't allow relative imports
+- [ ] Convert all lua file processing to use coroutines
+- [ ] Implement file watching
+- [ ] Implement a pipeline module that can be used to chain functions
+- [ ] Convert writers to a module that can be extended so we're not limited with just writing to files
+- [ ] Implement hooks for output file generation (using coroutines)
 - [ ] Load config from a file (should support the same lua config files)
-- [ ] Move file reading and writing outside of run function
 - [ ] Organise project structure
 - [ ] Add better logging
 - [ ] Add tests

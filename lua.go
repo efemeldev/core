@@ -39,6 +39,11 @@ func NewLuaStateManager(input NewLuaStateManagerInput) *LuaStateManager {
 		end
 
 		function require(moduleName)
+			-- Check if the module name starts with './'
+			if string.sub(moduleName, 1, 2) == "./" then
+				error("Relative paths are not supported")
+			end
+
 			local overrideModuleName = moduleName .. "-` + input.override + `"
 		
 			if package.loaded[overrideModuleName] then

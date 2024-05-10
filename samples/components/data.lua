@@ -1,3 +1,5 @@
+local subdata = require "samples/components/subdata"
+
 return {
-    some = "data"
+    some = subdata.message
 }

@@ -1,5 +1,5 @@
-local data = require "./components/data"
-local vars = require "./vars/env"
+local data = require "samples/components/data"
+local vars = require "samples/vars/env"
 
 return {
     result = {
