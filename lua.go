@@ -40,7 +40,7 @@ func NewLuaStateManager(input NewLuaStateManagerInput) *LuaStateManager {
 
 		function require(moduleName)
 
-			_ORIGINAL_EFEMEL_SCRIPT_PATH = _EFEMEL_SCRIPT_PATH
+			local _ORIGINAL_EFEMEL_SCRIPT_PATH = _EFEMEL_SCRIPT_PATH
 
 			-- if it's a relative path, resolve it
 			if string.sub(moduleName, 1, 1) == "." then
@@ -49,18 +49,20 @@ func NewLuaStateManager(input NewLuaStateManagerInput) *LuaStateManager {
 				_EFEMEL_SCRIPT_PATH = moduleName
 			end
 
-			_PRE_OVERRIDE_EFEMEL_SCRIPT_PATH = _EFEMEL_SCRIPT_PATH
+			local scriptPath = _EFEMEL_SCRIPT_PATH
 
-			_EFEMEL_SCRIPT_PATH = _EFEMEL_SCRIPT_PATH .. "-` + input.override + `"
+			local overrideScriptPath = scriptPath .. "-` + input.override + `"
+			
+			_EFEMEL_SCRIPT_PATH = getPathDir(_EFEMEL_SCRIPT_PATH)
 		
-			if package.loaded[_EFEMEL_SCRIPT_PATH] then
+			if package.loaded[overrideScriptPath] then
 				_EFEMEL_SCRIPT_PATH = _ORIGINAL_EFEMEL_SCRIPT_PATH
-				return package.loaded[_EFEMEL_SCRIPT_PATH]
+				return package.loaded[overrideScriptPath]
 			end
 
-			local status, overrideModule = pcall(original_require, _EFEMEL_SCRIPT_PATH)
+			local status, overrideModule = pcall(original_require, overrideScriptPath)
 			
-			originalModule = original_require(_PRE_OVERRIDE_EFEMEL_SCRIPT_PATH)
+			originalModule = original_require(scriptPath)
 
 			-- reset script path so that it doesn't affect other require calls
 			_EFEMEL_SCRIPT_PATH = _ORIGINAL_EFEMEL_SCRIPT_PATH
@@ -156,8 +158,6 @@ func RunScript[T any](state *lua.LState, script string, path string, processValu
 
 	processedValue, err := processValue(state, returnedLuaValue)
 
-	fmt.Println("processedValue:", processedValue)
-
 	if err != nil {
 		return null[T](), err
 	}
@@ -199,9 +199,6 @@ func RunReturnedLuaFunction(state *lua.LState, value lua.LValue) (lua.LValue, er
 
 // get returned table from script
 func GetReturnedMap(state *lua.LState, value lua.LValue) (interface{}, error) {
-
-	fmt.Println("value type:", value.Type())
-
     // Check if the returned value is a function
     if value.Type() == lua.LTFunction {
         value, err := RunReturnedLuaFunction(state, value)

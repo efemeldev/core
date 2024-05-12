@@ -1,3 +1,3 @@
 return {
-    message = _EFEMEL_SCRIPT_PATH
+    script_path = _EFEMEL_SCRIPT_PATH
 }
