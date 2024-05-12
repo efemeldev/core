@@ -53,11 +53,13 @@ go build -ldflags="-s -w" -o efemel
 - [x] Refactor the var loading code by overwriting the require function for better DX
 - [x] Implement stacking of required lua files and merging of the result
 - [x] Implement returned function execution before formatting
-- [x] Don't allow relative imports
+- [x] ~~Don't allow relative imports~~
+- [x] Implement a require resolver that converts all relative paths to absolute ones
 - [ ] Convert all lua file processing to use coroutines
-- [ ] Implement file watching
 - [ ] Implement a pipeline module that can be used to chain functions
 - [ ] Convert writers to a module that can be extended so we're not limited with just writing to files
+- [ ] Implement a formatter that replaces relative paths to absolute ones
+- [ ] Implement file watching
 - [ ] Implement hooks for output file generation (using coroutines)
 - [ ] Load config from a file (should support the same lua config files)
 - [ ] Organise project structure

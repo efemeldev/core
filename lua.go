@@ -39,30 +39,41 @@ func NewLuaStateManager(input NewLuaStateManagerInput) *LuaStateManager {
 		end
 
 		function require(moduleName)
-			-- Check if the module name starts with './'
-			if string.sub(moduleName, 1, 2) == "./" then
-				error("Relative paths are not supported")
+
+			_ORIGINAL_EFEMEL_SCRIPT_PATH = _EFEMEL_SCRIPT_PATH
+
+			-- if it's a relative path, resolve it
+			if string.sub(moduleName, 1, 1) == "." then
+				_EFEMEL_SCRIPT_PATH = resolvePath(_EFEMEL_SCRIPT_PATH, moduleName)
+			else
+				_EFEMEL_SCRIPT_PATH = moduleName
 			end
 
-			local overrideModuleName = moduleName .. "-` + input.override + `"
+			_PRE_OVERRIDE_EFEMEL_SCRIPT_PATH = _EFEMEL_SCRIPT_PATH
+
+			_EFEMEL_SCRIPT_PATH = _EFEMEL_SCRIPT_PATH .. "-` + input.override + `"
 		
-			if package.loaded[overrideModuleName] then
-				return package.loaded[overrideModuleName]
+			if package.loaded[_EFEMEL_SCRIPT_PATH] then
+				_EFEMEL_SCRIPT_PATH = _ORIGINAL_EFEMEL_SCRIPT_PATH
+				return package.loaded[_EFEMEL_SCRIPT_PATH]
 			end
+
+			local status, overrideModule = pcall(original_require, _EFEMEL_SCRIPT_PATH)
 			
-			local status, overrideModule = pcall(original_require, overrideModuleName)
-			
-			originalModule = original_require(moduleName)
-		
+			originalModule = original_require(_PRE_OVERRIDE_EFEMEL_SCRIPT_PATH)
+
+			-- reset script path so that it doesn't affect other require calls
+			_EFEMEL_SCRIPT_PATH = _ORIGINAL_EFEMEL_SCRIPT_PATH
+
 			if not status then
 				return originalModule
 			end
-		
+
 			if type(originalModule) == "table" and type(overrideModule) == "table" then
 				originalModule = mergeTables(originalModule, overrideModule)
 				return originalModule
 			end
-			
+
 			return overrideModule
 		end
 		`
@@ -115,7 +126,16 @@ func (l *LuaStateManager) Close() {
 }
 
 // run script
-func RunScriptRaw(lua *lua.LState, script string) (lua.LValue, error) {
+func RunScriptRaw(lua *lua.LState, script string, path string) (lua.LValue, error) {
+
+	// add path to the script
+	if path != "" {
+		script = `
+		_EFEMEL_SCRIPT_PATH = "` + path + `"
+
+		`+script
+	}
+
 	if err := lua.DoString(script); err != nil {
 		return nil, err
 	}
@@ -126,9 +146,9 @@ func RunScriptRaw(lua *lua.LState, script string) (lua.LValue, error) {
 }
 
 // run script
-func RunScript[T any](state *lua.LState, script string, processValue func(state *lua.LState, value lua.LValue) (T, error)) (T, error) {
+func RunScript[T any](state *lua.LState, script string, path string, processValue func(state *lua.LState, value lua.LValue) (T, error)) (T, error) {
 
-	returnedLuaValue, err := RunScriptRaw(state, script)
+	returnedLuaValue, err := RunScriptRaw(state, script, path)
 
 	if err != nil {
 		return null[T](), err

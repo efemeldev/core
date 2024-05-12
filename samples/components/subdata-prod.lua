@@ -1,3 +1,3 @@
 return {
-    message = "Hello prod"
+    message = _EFEMEL_SCRIPT_PATH
 }

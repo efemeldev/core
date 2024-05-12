@@ -1,5 +1,7 @@
-local vars = require "samples/vars/env"
+local vars = require "./vars/env"
 local data = require "samples/components/data"
+
+print("test01", _EFEMEL_SCRIPT_PATH)
 
 return {
     result = {

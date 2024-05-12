@@ -4,6 +4,7 @@ import (
 	fileprocessors "efemel/services/fileprocessors"
 	"flag"
 	"fmt"
+	"path/filepath"
 	"sync"
 
 	lua "github.com/yuin/gopher-lua"
@@ -42,6 +43,39 @@ func luaAdd(L *lua.LState) int {
 	return 1
 }
 
+func resolvePath(basePath string, relPath string) string {
+    // Resolve the absolute path
+    absPath := filepath.Join(basePath, relPath)
+	
+	// replace forward slashes with backslashes
+	absPath = filepath.ToSlash(absPath)
+
+	return absPath
+}
+
+func luaResolvePath(L *lua.LState) int {
+	a := L.ToString(1)
+	b := L.ToString(2)
+
+	result := resolvePath(a, b)
+
+	L.Push(lua.LString(result))
+	return 1
+}
+
+func getPathDir(path string) string {
+	return filepath.Dir(path)
+}
+
+func luaGetPathDir(L *lua.LState) int {
+	a := L.ToString(1)
+
+	result := getPathDir(a)
+
+	L.Push(lua.LString(result))
+	return 1
+}
+
 type RunInput struct {
 	fileProcessor           fileprocessors.FileProcessor
 	formatter               Formatter
@@ -67,7 +101,7 @@ func run(input RunInput) {
 			// to handle relative imports to the file
 			luaStateManager.AddPath(job.FilePath)
 
-			res, err := RunScript(luaStateManager.state, string(job.Data), GetReturnedMap)
+			res, err := RunScript(luaStateManager.state, string(job.Data), job.FilePath, GetReturnedMap)
 
 			if err != nil {
 				panic(err)
@@ -201,6 +235,8 @@ func main() {
 		})
 
 		luaStateManager.AddGlobalFunction("testAdd", luaAdd)
+		luaStateManager.AddGlobalFunction("resolvePath", luaResolvePath)
+		luaStateManager.AddGlobalFunction("getPathDir", luaGetPathDir)
 
 		return luaStateManager
 	}
